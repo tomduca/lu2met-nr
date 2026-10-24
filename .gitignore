@@ -41,3 +41,5 @@ audio_processor/recordings/*.mp3
 test_*.py
 simple_*.py
 temp
+.build-venv/
+!audio_processor/LU2MET_NR.spec

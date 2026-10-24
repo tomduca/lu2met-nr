@@ -26,6 +26,7 @@ from audio_pipeline import (
     choose_stream_channels,
     input_is_clipped,
     input_trim_slider_to_gain,
+    recordings_dir,
     to_mono,
     volume_slider_to_gain,
     write_mono,
@@ -367,8 +368,8 @@ class AudioProcessor(QThread):
             self.log_signal.emit(f"Preset changed to {preset} ({self.mode} mode)")
     
     def start_recording(self):
-        recordings_dir = Path(__file__).parent / 'recordings'
-        self.recorder = AsyncMonoRecorder(recordings_dir, SAMPLE_RATE, MP3_AVAILABLE)
+        folder = recordings_dir()
+        self.recorder = AsyncMonoRecorder(folder, SAMPLE_RATE, MP3_AVAILABLE)
         self.recorder.start()
         self.recording = True
         self.log_signal.emit("🔴 Recording started")
@@ -799,18 +800,18 @@ class NovaSDRGUI(QMainWindow):
         import subprocess
         import platform
         
-        recordings_dir = Path(__file__).parent / 'recordings'
-        recordings_dir.mkdir(exist_ok=True)
+        folder = recordings_dir()
+        folder.mkdir(parents=True, exist_ok=True)
         
         try:
             system = platform.system()
             if system == 'Windows':
-                subprocess.run(['explorer', str(recordings_dir)])
+                subprocess.run(['explorer', str(folder)])
             elif system == 'Darwin':  # macOS
-                subprocess.run(['open', str(recordings_dir)])
+                subprocess.run(['open', str(folder)])
             else:  # Linux
-                subprocess.run(['xdg-open', str(recordings_dir)])
-            self.add_log(f"📁 Opened: {recordings_dir}")
+                subprocess.run(['xdg-open', str(folder)])
+            self.add_log(f"📁 Opened: {folder}")
         except Exception as e:
             self.add_log(f"❌ Error opening folder: {e}")
     
@@ -914,7 +915,47 @@ class NovaSDRGUI(QMainWindow):
         event.accept()
 
 
+def self_test():
+    """Check that a packaged build contains a working DSP chain.
+
+    Used by the build scripts on the frozen executable; returns an exit code.
+    """
+    try:
+        if not NOVASDR_AVAILABLE:
+            raise RuntimeError('novasdr_nr extension is not available')
+        rng = np.random.default_rng(7)
+        block = rng.normal(0, 0.1, BLOCK_SIZE * 4).astype(np.float32)
+        band = BANDPASS_CONFIG['SSB']
+        sos = signal.butter(
+            4, [band['low'] / (SAMPLE_RATE / 2), band['high'] / (SAMPLE_RATE / 2)],
+            btype='band', output='sos',
+        )
+        filtered = signal.sosfilt(sos, block)
+        preset = PRESETS_SSB['extreme']
+        nr = novasdr_nr_py.SpectralNoiseReduction(
+            SAMPLE_RATE, preset['gain'], preset['alpha'], preset['asnr']
+        )
+        output = nr.process(filtered.astype(np.float32))
+        peak = float(np.max(np.abs(output)))
+        # The extreme preset scales by 1/16384; unfiltered samples would be ~0.1+.
+        if output.shape != block.shape or not 0.0 < peak < 0.01:
+            raise RuntimeError(f'Unexpected NR output: shape={output.shape} peak={peak}')
+        sd.query_devices()
+        app = QApplication.instance() or QApplication(['self-test'])
+        app.processEvents()
+    except Exception as e:
+        logging.error(f'Self-test failed: {e}', exc_info=True)
+        print(f'Self-test failed: {e}')
+        return 1
+    logging.info(f'Self-test OK (NR peak {peak:.6f})')
+    print(f'Self-test OK (NR peak {peak:.6f})')
+    return 0
+
+
 def main():
+    if '--self-test' in sys.argv:
+        sys.exit(self_test())
+
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
     

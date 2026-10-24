@@ -2,11 +2,24 @@ from pathlib import Path
 from datetime import datetime
 import math
 import queue
+import sys
 import threading
 import time
 import wave
 
 import numpy as np
+
+
+def recordings_dir():
+    """Return a writable recordings folder.
+
+    Packaged builds cannot write next to their code: the Windows build
+    may run from a temporary extraction folder and the macOS bundle is
+    signed and may be read-only, so they use the user's Documents.
+    """
+    if getattr(sys, 'frozen', False):
+        return Path.home() / 'Documents' / 'LU2MET NR Filter' / 'Recordings'
+    return Path(__file__).resolve().parent / 'recordings'
 
 
 def input_trim_slider_to_gain(value):

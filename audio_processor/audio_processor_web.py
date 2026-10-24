@@ -21,6 +21,7 @@ from audio_pipeline import (
     choose_stream_channels,
     input_is_clipped,
     input_trim_slider_to_gain,
+    recordings_dir,
     to_mono,
     volume_slider_to_gain,
     write_mono,
@@ -999,8 +1000,8 @@ def start_recording():
     if processor_state['recording']:
         return jsonify({'success': False, 'error': 'Already recording'})
     
-    recordings_dir = Path(__file__).parent / 'recordings'
-    recorder = AsyncMonoRecorder(recordings_dir, SAMPLE_RATE, MP3_AVAILABLE)
+    folder = recordings_dir()
+    recorder = AsyncMonoRecorder(folder, SAMPLE_RATE, MP3_AVAILABLE)
     recorder.start()
     processor_state['recorder'] = recorder
     processor_state['recording'] = True

@@ -346,7 +346,7 @@ Use **Web Interface** (`./run_web.sh`) for:
 
 - **Installation:** See `INSTALL.md`
 - **Usage Guide:** See `audio_processor/USAGE.md`
-- **Standalone Apps:** See `STANDALONE_APP_GUIDE.md`
+- **Standalone Apps:** See `BUILD.md`
 - **Technical Details:** See `SOLUTION_SUMMARY.md`
 
 ---
