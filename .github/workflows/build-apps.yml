@@ -23,6 +23,7 @@ jobs:
   build:
     name: Build ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -72,10 +73,12 @@ jobs:
           PYTHON: python
         run: ./audio_processor/build_windows.ps1
 
-      - uses: actions/upload-artifact@v4
+      # The build already produces a zip; upload it as-is so the download
+      # is not a zip wrapped in another zip.
+      - uses: actions/upload-artifact@v7
         with:
-          name: LU2MET_NR-${{ matrix.name }}-${{ env.APP_VERSION }}
           path: audio_processor/dist/*.zip
+          archive: false
           if-no-files-found: error
           retention-days: 30
 
@@ -87,7 +90,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true

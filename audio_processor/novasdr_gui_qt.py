@@ -923,6 +923,7 @@ def self_test():
     try:
         if not NOVASDR_AVAILABLE:
             raise RuntimeError('novasdr_nr extension is not available')
+        logging.info('Self-test: DSP chain')
         rng = np.random.default_rng(7)
         block = rng.normal(0, 0.1, BLOCK_SIZE * 4).astype(np.float32)
         band = BANDPASS_CONFIG['SSB']
@@ -940,7 +941,9 @@ def self_test():
         # The extreme preset scales by 1/16384; unfiltered samples would be ~0.1+.
         if output.shape != block.shape or not 0.0 < peak < 0.01:
             raise RuntimeError(f'Unexpected NR output: shape={output.shape} peak={peak}')
+        logging.info('Self-test: audio devices')
         sd.query_devices()
+        logging.info('Self-test: Qt')
         app = QApplication.instance() or QApplication(['self-test'])
         app.processEvents()
     except Exception as e:

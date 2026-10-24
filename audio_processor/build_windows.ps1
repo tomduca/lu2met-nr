@@ -58,11 +58,19 @@ Invoke-Checked $VenvPython @('-m', 'PyInstaller', '--noconfirm', '--clean', 'LU2
 
 Write-Host '==> Self-test of the packaged app'
 # The app is a GUI executable, so wait for it explicitly to get its exit code.
+# A startup error in a windowed build opens a message box that never closes
+# unattended, so the wait has a time limit.
+$Log = Join-Path $HOME 'novasdr_debug.log'
 $env:QT_QPA_PLATFORM = 'offscreen'
-$SelfTest = Start-Process -FilePath "$AppDir\LU2MET_NR.exe" -ArgumentList '--self-test' -Wait -PassThru -NoNewWindow
+$SelfTest = Start-Process -FilePath "$AppDir\LU2MET_NR.exe" -ArgumentList '--self-test' -PassThru -NoNewWindow
 Remove-Item Env:QT_QPA_PLATFORM
+if (-not $SelfTest.WaitForExit(120000)) {
+    Stop-Process -Id $SelfTest.Id -Force -ErrorAction SilentlyContinue
+    if (Test-Path $Log) { Get-Content $Log -Tail 40 }
+    throw 'Packaged app self-test did not finish within 120 seconds'
+}
+$SelfTest.WaitForExit()
 if ($SelfTest.ExitCode -ne 0) {
-    $Log = Join-Path $HOME 'novasdr_debug.log'
     if (Test-Path $Log) { Get-Content $Log -Tail 40 }
     throw "Packaged app self-test failed with exit code $($SelfTest.ExitCode)"
 }
