@@ -30,10 +30,10 @@ The web interface is served locally on port `5001`.
 
 ## Interfaces
 
-- `novasdr_gui_qt.py` provides the native PyQt5 interface.
+- `lu2met_nr_gui.py` provides the native PyQt5 interface.
 - `audio_processor_web.py` provides the Flask browser interface.
 - `audio_pipeline.py` contains shared channel, gain, meter, and recording helpers.
 
 ## DSP Source and Dependencies
 
-The Rust spectral noise-reduction implementation is adapted from NovaSDR. See the repository's [third-party source and license inventory](../THIRD_PARTY.md) for the upstream file, direct dependencies, and included license notices.
+The Rust spectral noise-reduction implementation is adapted from the novasdr-wasm project. See the repository's [third-party source and license inventory](../THIRD_PARTY.md) for the upstream file, direct dependencies, and included license notices.

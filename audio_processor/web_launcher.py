@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NovaSDR Audio Processor - Standalone Application Wrapper
+LU2MET NR Filter - Standalone Application Wrapper
 Starts Flask server and opens browser automatically
 Auto-shuts down when browser window is closed
 """
@@ -18,7 +18,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 # Import the web application
-from audio_processor_web import app, log, NOVASDR_AVAILABLE, MP3_AVAILABLE
+from audio_processor_web import app, log, NR_AVAILABLE, MP3_AVAILABLE
 
 # Global flag for shutdown
 shutdown_flag = threading.Event()
@@ -107,11 +107,11 @@ def open_browser():
 def main():
     """Main entry point for standalone app"""
     print("=" * 60)
-    print("NovaSDR Audio Processor - Standalone Application")
+    print("LU2MET NR Filter - Standalone Application")
     print("=" * 60)
     print()
-    log("NovaSDR Audio Processor Starting...")
-    log(f"NovaSDR module: {'✓ Available' if NOVASDR_AVAILABLE else '✗ Not available'}")
+    log("LU2MET NR Filter Starting...")
+    log(f"Noise reduction module: {'✓ Available' if NR_AVAILABLE else '✗ Not available'}")
     log(f"MP3 recording: {'✓ Available' if MP3_AVAILABLE else '✗ Not available (will use WAV)'}")
     print()
     print("Opening browser at: http://localhost:5001")
@@ -130,7 +130,7 @@ def main():
     except (KeyboardInterrupt, SystemExit):
         pass
     finally:
-        print("\n\nShutting down NovaSDR Audio Processor...")
+        print("\n\nShutting down LU2MET NR Filter...")
         print("73!")
         shutdown_flag.set()
 

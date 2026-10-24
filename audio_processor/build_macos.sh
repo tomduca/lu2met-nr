@@ -28,9 +28,9 @@ source "${BUILD_VENV}/bin/activate"
 python -m pip install --quiet --upgrade pip
 python -m pip install --quiet -r requirements-build.txt
 
-echo "==> Building novasdr_nr Rust extension"
+echo "==> Building spectral_nr Rust extension"
 rm -rf build dist
-maturin build --release --locked -m ../novasdr_nr_py/Cargo.toml -o build/wheels
+maturin build --release --locked -m ../spectral_nr/Cargo.toml -o build/wheels
 python -m pip install --quiet --force-reinstall --no-deps build/wheels/*.whl
 
 echo "==> Running tests"
@@ -45,7 +45,7 @@ codesign --verify --deep --strict "${APP}"
 
 echo "==> Self-test of the packaged app"
 if ! QT_QPA_PLATFORM=offscreen "${APP}/Contents/MacOS/LU2MET_NR" --self-test; then
-    tail -n 40 "${HOME}/novasdr_debug.log" || true
+    tail -n 40 "${HOME}/lu2met_nr_debug.log" || true
     echo "Packaged app self-test failed" >&2
     exit 1
 fi

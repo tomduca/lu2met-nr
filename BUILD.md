@@ -6,7 +6,7 @@ The same build scripts run locally and in GitHub Actions. Each script:
 
 1. Creates a separate build environment, `audio_processor/.build-venv` (Python 3.12). The development `venv` is not modified.
 2. Installs the pinned versions from [`audio_processor/requirements-build.txt`](audio_processor/requirements-build.txt).
-3. Builds the `novasdr_nr` Rust extension with `maturin --locked`, so `novasdr_nr_py/Cargo.lock` is respected.
+3. Builds the `spectral_nr` Rust extension with `maturin --locked`, so `spectral_nr/Cargo.lock` is respected.
 4. Runs the unit tests, including a regression test that compares the filter output with the reference build.
 5. Packages the app with PyInstaller using [`audio_processor/LU2MET_NR.spec`](audio_processor/LU2MET_NR.spec).
 6. Runs the packaged app with `--self-test`, which checks that the bundled DSP chain loads and produces correctly scaled output.
@@ -89,11 +89,11 @@ Allow microphone access when asked; it is required to read the audio input devic
 ## Runtime Files
 
 - Recordings from packaged builds are saved to `Documents/LU2MET NR Filter/Recordings`. When running from source they are saved to `audio_processor/recordings`.
-- The debug log is `novasdr_debug.log` in the user's home folder.
+- The debug log is `lu2met_nr_debug.log` in the user's home folder.
 - MP3 export requires FFmpeg on `PATH`; WAV recording always works.
 
 ## Troubleshooting
 
-- **Self-test fails:** the script prints the end of `novasdr_debug.log`. A failure about NR output means the Rust extension is producing wrongly scaled audio; run the unit tests in `audio_processor/tests` to locate it.
-- **`maturin` fails with `--locked`:** `Cargo.lock` is out of date. Run `cargo update` in `novasdr_nr_py`, test, and commit the lock file.
+- **Self-test fails:** the script prints the end of `lu2met_nr_debug.log`. A failure about NR output means the Rust extension is producing wrongly scaled audio; run the unit tests in `audio_processor/tests` to locate it.
+- **`maturin` fails with `--locked`:** `Cargo.lock` is out of date. Run `cargo update` in `spectral_nr`, test, and commit the lock file.
 - **Wrong Python version:** delete `audio_processor/.build-venv` and run the script again with `PYTHON` pointing to Python 3.12.

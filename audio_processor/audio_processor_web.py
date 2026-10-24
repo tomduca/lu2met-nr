@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NovaSDR Audio Processor - Web Interface
+LU2MET NR Filter - Web Interface
 Simple web-based interface for device selection, preset control, and bypass toggle
 """
 
@@ -13,6 +13,12 @@ from scipy import signal
 import time
 import os
 from pathlib import Path
+
+# A Windows console may use a legacy code page that cannot encode ✓ or ✗.
+for stream in (sys.stdout, sys.stderr):
+    if stream is not None and hasattr(stream, 'reconfigure'):
+        stream.reconfigure(errors='backslashreplace')
+
 from audio_pipeline import (
     AsyncMonoRecorder,
     AudioLevelMeter,
@@ -33,10 +39,10 @@ except ImportError:
     MP3_AVAILABLE = False
 
 try:
-    import novasdr_nr as novasdr_nr_py
-    NOVASDR_AVAILABLE = True
+    import spectral_nr
+    NR_AVAILABLE = True
 except ImportError:
-    NOVASDR_AVAILABLE = False
+    NR_AVAILABLE = False
 
 app = Flask(__name__)
 
@@ -49,7 +55,7 @@ processor_state = {
     'input_device': None,
     'output_device': None,
     'stream': None,
-    'novasdr_nr': None,
+    'nr': None,
     'post_gain': 14.0,
     'input_gain': input_trim_slider_to_gain(36),
     'output_volume': volume_slider_to_gain(100),
@@ -97,7 +103,7 @@ processor_state['block_config'] = BlockConfig({
     'bypass': processor_state['bypass'],
     'input_gain': processor_state['input_gain'],
     'output_volume': processor_state['output_volume'],
-    'novasdr_nr': processor_state['novasdr_nr'],
+    'nr': processor_state['nr'],
     'post_gain': processor_state['post_gain'],
     'bandpass_filter': processor_state['bandpass_filter'],
     'zi_bandpass': processor_state['zi_bandpass'],
@@ -137,7 +143,7 @@ def audio_callback(indata, outdata, frames, time_info, status):
     meters['input_clipping'] = meters['input_clipping'] or input_is_clipped(indata)
     audio_data = to_mono(indata)
 
-    if config['bypass'] or not NOVASDR_AVAILABLE or config['novasdr_nr'] is None:
+    if config['bypass'] or not NR_AVAILABLE or config['nr'] is None:
         filtered_audio = audio_data
     else:
         audio_data = audio_data * config['input_gain']
@@ -150,7 +156,7 @@ def audio_callback(indata, outdata, frames, time_info, status):
                 )
             else:
                 filtered_audio = audio_data
-            filtered_audio = config['novasdr_nr'].process(filtered_audio.astype(np.float32))
+            filtered_audio = config['nr'].process(filtered_audio.astype(np.float32))
             filtered_audio = filtered_audio * config['post_gain']
         except Exception as error:
             log(f"Audio processing error: {error}")
@@ -172,7 +178,7 @@ HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>NovaSDR Audio Processor</title>
+    <title>LU2MET NR Filter</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -448,7 +454,7 @@ HTML_TEMPLATE = """
 <body>
     <div class="container">
         <div class="header">
-            <h1>📻 NovaSDR Audio Processor</h1>
+            <h1>📻 LU2MET NR Filter</h1>
             <div class="status" id="status">● Stopped</div>
         </div>
         
@@ -813,9 +819,9 @@ def set_preset():
     
     processor_state['preset'] = preset_name
     
-    if processor_state['novasdr_nr'] and NOVASDR_AVAILABLE:
+    if processor_state['nr'] and NR_AVAILABLE:
         preset = presets[preset_name]
-        processor_state['novasdr_nr'] = novasdr_nr_py.SpectralNoiseReduction(
+        processor_state['nr'] = spectral_nr.SpectralNoiseReduction(
             SAMPLE_RATE,
             preset['gain'],
             preset['alpha'],
@@ -823,7 +829,7 @@ def set_preset():
         )
         processor_state['post_gain'] = preset['post_gain']
         processor_state['block_config'].schedule(
-            novasdr_nr=processor_state['novasdr_nr'],
+            nr=processor_state['nr'],
             post_gain=processor_state['post_gain'],
         )
         log(f"Preset changed to {preset_name} ({processor_state['mode']} mode)")
@@ -870,12 +876,12 @@ def set_mode():
     # Update bandpass filter
     processor_state['bandpass_filter'], processor_state['zi_bandpass'] = create_bandpass_filter(mode)
     
-    # Update NovaSDR parameters based on mode and current preset
+    # Update noise reduction parameters based on mode and current preset
     presets = PRESETS_CW if mode == 'CW' else PRESETS_SSB
     preset = presets[processor_state['preset']]
     
-    if processor_state['novasdr_nr'] and NOVASDR_AVAILABLE:
-        processor_state['novasdr_nr'] = novasdr_nr_py.SpectralNoiseReduction(
+    if processor_state['nr'] and NR_AVAILABLE:
+        processor_state['nr'] = spectral_nr.SpectralNoiseReduction(
             SAMPLE_RATE,
             preset['gain'],
             preset['alpha'],
@@ -885,7 +891,7 @@ def set_mode():
     processor_state['block_config'].schedule(
         bandpass_filter=processor_state['bandpass_filter'],
         zi_bandpass=processor_state['zi_bandpass'],
-        novasdr_nr=processor_state['novasdr_nr'],
+        nr=processor_state['nr'],
         post_gain=processor_state['post_gain'],
     )
     
@@ -908,18 +914,18 @@ def start_processing():
         # Initialize bandpass filter based on current mode
         processor_state['bandpass_filter'], processor_state['zi_bandpass'] = create_bandpass_filter(processor_state['mode'])
         
-        # Initialize NovaSDR filter with mode-specific presets
-        if NOVASDR_AVAILABLE:
+        # Initialize noise reduction with mode-specific presets
+        if NR_AVAILABLE:
             presets = PRESETS_CW if processor_state['mode'] == 'CW' else PRESETS_SSB
             preset = presets[data['preset']]
-            processor_state['novasdr_nr'] = novasdr_nr_py.SpectralNoiseReduction(
+            processor_state['nr'] = spectral_nr.SpectralNoiseReduction(
                 SAMPLE_RATE,
                 preset['gain'],
                 preset['alpha'],
                 preset['asnr']
             )
             processor_state['post_gain'] = preset['post_gain']
-            log(f"✓ NovaSDR initialized: {data['preset']} preset")
+            log(f"✓ Noise reduction initialized: {data['preset']} preset")
 
         processor_state['block_config'].schedule(
             bypass=processor_state['bypass'],
@@ -927,7 +933,7 @@ def start_processing():
             output_volume=processor_state['output_volume'],
             bandpass_filter=processor_state['bandpass_filter'],
             zi_bandpass=processor_state['zi_bandpass'],
-            novasdr_nr=processor_state['novasdr_nr'],
+            nr=processor_state['nr'],
             post_gain=processor_state['post_gain'],
         )
         processor_state['meters'] = {
@@ -1044,8 +1050,8 @@ def recording_status():
     })
 
 if __name__ == '__main__':
-    log("NovaSDR Audio Processor Web Interface")
-    log(f"NovaSDR module: {'✓ Available' if NOVASDR_AVAILABLE else '✗ Not available'}")
+    log("LU2MET NR Filter Web Interface")
+    log(f"Noise reduction module: {'✓ Available' if NR_AVAILABLE else '✗ Not available'}")
     print("\n" + "="*50)
     print("Open your browser at: http://localhost:5001")
     print("="*50 + "\n")

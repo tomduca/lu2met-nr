@@ -30,7 +30,7 @@ impl SpectralNoiseReduction {
 }
 
 #[pymodule]
-fn novasdr_nr(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn spectral_nr(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<SpectralNoiseReduction>()?;
     Ok(())
 }

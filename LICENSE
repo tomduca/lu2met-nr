@@ -1,7 +1,7 @@
 HF Audio Processor
 Copyright (c) 2024
 
-The spectral noise-reduction implementation in `novasdr_nr_py/src/spectralnoisereduction.rs`
+The spectral noise-reduction implementation in `spectral_nr/src/spectralnoisereduction.rs`
 is adapted from `src/spectralnoisereduction.rs` in
 https://github.com/Steven9101/novasdr-wasm.
 The upstream repository provides GPL-3.0, Apache-2.0, and MIT license texts.

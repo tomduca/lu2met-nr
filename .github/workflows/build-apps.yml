@@ -58,7 +58,7 @@ jobs:
           toolchain: stable
           # The default adds -D warnings; compiler warnings must not fail release builds.
           rustflags: ''
-          cache-workspaces: novasdr_nr_py
+          cache-workspaces: spectral_nr
 
       - name: Build macOS app
         if: runner.os == 'macOS'

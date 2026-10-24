@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NovaSDR Audio Processor - Native PyQt5 GUI
+LU2MET NR Filter - Native PyQt5 GUI
 True standalone desktop application
 """
 
@@ -32,31 +32,37 @@ from audio_pipeline import (
     write_mono,
 )
 
+# A Windows console may use a legacy code page (e.g. cp1252) that cannot
+# encode symbols such as ✓; replace them instead of failing at startup.
+for stream in (sys.stdout, sys.stderr):
+    if stream is not None and hasattr(stream, 'reconfigure'):
+        stream.reconfigure(errors='backslashreplace')
+
 # Setup logging to file for debugging when run from Finder
-log_file = Path.home() / 'novasdr_debug.log'
+log_file = Path.home() / 'lu2met_nr_debug.log'
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(log_file),
+        logging.FileHandler(log_file, encoding='utf-8'),
         logging.StreamHandler(sys.stdout)
     ]
 )
-logging.info(f"NovaSDR Audio Processor starting... Log file: {log_file}")
+logging.info(f"LU2MET NR Filter starting... Log file: {log_file}")
 
 try:
-    import novasdr_nr as novasdr_nr_py
-    NOVASDR_AVAILABLE = True
-    logging.info(f"✓ NovaSDR module loaded from: {novasdr_nr_py.__file__}")
-    print(f"✓ NovaSDR module loaded from: {novasdr_nr_py.__file__}")
+    import spectral_nr
+    NR_AVAILABLE = True
+    logging.info(f"✓ Noise reduction module loaded from: {spectral_nr.__file__}")
+    print(f"✓ Noise reduction module loaded from: {spectral_nr.__file__}")
 except ImportError as e:
-    NOVASDR_AVAILABLE = False
-    logging.error(f"✗ NovaSDR module not available: {e}")
-    print(f"✗ NovaSDR module not available: {e}")
+    NR_AVAILABLE = False
+    logging.error(f"✗ Noise reduction module not available: {e}")
+    print(f"✗ Noise reduction module not available: {e}")
 except Exception as e:
-    NOVASDR_AVAILABLE = False
-    logging.error(f"✗ Error loading NovaSDR module: {e}", exc_info=True)
-    print(f"✗ Error loading NovaSDR module: {e}")
+    NR_AVAILABLE = False
+    logging.error(f"✗ Error loading noise reduction module: {e}", exc_info=True)
+    print(f"✗ Error loading noise reduction module: {e}")
     import traceback
     traceback.print_exc()
 
@@ -133,7 +139,7 @@ class AudioProcessor(QThread):
         self.input_device = None
         self.output_device = None
         self.stream = None
-        self.novasdr_nr = None
+        self.nr = None
         self.post_gain = 14.0
         self.input_gain = input_trim_slider_to_gain(36)
         self.output_volume = 1.0  # Default output volume (100%)
@@ -149,7 +155,7 @@ class AudioProcessor(QThread):
             'output_volume': self.output_volume,
             'bandpass_filter': None,
             'zi_bandpass': None,
-            'novasdr_nr': None,
+            'nr': None,
             'post_gain': self.post_gain,
         })
         self.recorder = None
@@ -185,7 +191,7 @@ class AudioProcessor(QThread):
         self.input_clipping_seen = self.input_clipping_seen or input_is_clipped(indata)
         audio_data = to_mono(indata)
 
-        if config['bypass'] or not NOVASDR_AVAILABLE or config['novasdr_nr'] is None:
+        if config['bypass'] or not NR_AVAILABLE or config['nr'] is None:
             # Bypass disables processing but retains the master output stage.
             filtered_audio = audio_data
             if self.callback_count == 1:
@@ -202,7 +208,7 @@ class AudioProcessor(QThread):
                 else:
                     filtered_audio = audio_data
 
-                filtered_audio = config['novasdr_nr'].process(filtered_audio.astype(np.float32))
+                filtered_audio = config['nr'].process(filtered_audio.astype(np.float32))
                 filtered_audio = filtered_audio * config['post_gain']
 
                 if self.callback_count == 1:
@@ -232,11 +238,11 @@ class AudioProcessor(QThread):
         
         self.bandpass_filter, self.zi_bandpass = self.create_bandpass_filter(mode)
         
-        if NOVASDR_AVAILABLE:
+        if NR_AVAILABLE:
             try:
                 presets = PRESETS_CW if mode == 'CW' else PRESETS_SSB
                 preset_config = presets[preset]
-                self.novasdr_nr = novasdr_nr_py.SpectralNoiseReduction(
+                self.nr = spectral_nr.SpectralNoiseReduction(
                     SAMPLE_RATE,
                     preset_config['gain'],
                     preset_config['alpha'],
@@ -246,19 +252,19 @@ class AudioProcessor(QThread):
                 self.block_config.schedule(
                     bandpass_filter=self.bandpass_filter,
                     zi_bandpass=self.zi_bandpass,
-                    novasdr_nr=self.novasdr_nr,
+                    nr=self.nr,
                     post_gain=self.post_gain,
                 )
-                logging.info(f"✓ NovaSDR filter initialized: {preset} mode {mode}")
-                print(f"✓ NovaSDR filter initialized: {preset} mode {mode}")
+                logging.info(f"✓ Noise reduction initialized: {preset} mode {mode}")
+                print(f"✓ Noise reduction initialized: {preset} mode {mode}")
             except Exception as e:
-                logging.error(f"✗ Failed to initialize NovaSDR: {e}", exc_info=True)
-                print(f"✗ Failed to initialize NovaSDR: {e}")
+                logging.error(f"✗ Failed to initialize noise reduction: {e}", exc_info=True)
+                print(f"✗ Failed to initialize noise reduction: {e}")
                 import traceback
                 traceback.print_exc()
-                self.log_signal.emit(f"ERROR: Failed to initialize NovaSDR: {e}")
+                self.log_signal.emit(f"ERROR: Failed to initialize noise reduction: {e}")
         else:
-            self.log_signal.emit("WARNING: NovaSDR module not available - running in bypass mode")
+            self.log_signal.emit("WARNING: Noise reduction module not available - running in bypass mode")
         
         # Query device info to get correct number of channels
         try:
@@ -290,7 +296,7 @@ class AudioProcessor(QThread):
                 output_volume=self.output_volume,
                 bandpass_filter=self.bandpass_filter,
                 zi_bandpass=self.zi_bandpass,
-                novasdr_nr=self.novasdr_nr,
+                nr=self.nr,
                 post_gain=self.post_gain,
             )
             self.stream.start()
@@ -327,10 +333,10 @@ class AudioProcessor(QThread):
         self.mode = mode
         self.bandpass_filter, self.zi_bandpass = self.create_bandpass_filter(mode)
         
-        if self.novasdr_nr and NOVASDR_AVAILABLE:
+        if self.nr and NR_AVAILABLE:
             presets = PRESETS_CW if mode == 'CW' else PRESETS_SSB
             preset_config = presets[self.preset]
-            self.novasdr_nr = novasdr_nr_py.SpectralNoiseReduction(
+            self.nr = spectral_nr.SpectralNoiseReduction(
                 SAMPLE_RATE,
                 preset_config['gain'],
                 preset_config['alpha'],
@@ -341,7 +347,7 @@ class AudioProcessor(QThread):
         self.block_config.schedule(
             bandpass_filter=self.bandpass_filter,
             zi_bandpass=self.zi_bandpass,
-            novasdr_nr=self.novasdr_nr,
+            nr=self.nr,
             post_gain=self.post_gain,
         )
             
@@ -351,10 +357,10 @@ class AudioProcessor(QThread):
     def set_preset(self, preset):
         self.preset = preset
         
-        if self.novasdr_nr and NOVASDR_AVAILABLE:
+        if self.nr and NR_AVAILABLE:
             presets = PRESETS_CW if self.mode == 'CW' else PRESETS_SSB
             preset_config = presets[preset]
-            self.novasdr_nr = novasdr_nr_py.SpectralNoiseReduction(
+            self.nr = spectral_nr.SpectralNoiseReduction(
                 SAMPLE_RATE,
                 preset_config['gain'],
                 preset_config['alpha'],
@@ -362,7 +368,7 @@ class AudioProcessor(QThread):
             )
             self.post_gain = preset_config['post_gain']
             self.block_config.schedule(
-                novasdr_nr=self.novasdr_nr,
+                nr=self.nr,
                 post_gain=self.post_gain,
             )
             self.log_signal.emit(f"Preset changed to {preset} ({self.mode} mode)")
@@ -403,10 +409,35 @@ class AudioProcessor(QThread):
             return None
 
 
-class NovaSDRGUI(QMainWindow):
+SETTINGS_ORGANIZATION = 'LU2MET'
+SETTINGS_APPLICATION = 'LU2MET_NR_Filter'
+# Settings key used by releases before the rename; copied once on first start.
+LEGACY_SETTINGS_APPLICATION = 'NovaSDR_NR_Filter'
+
+
+def app_keys(settings):
+    """Keys stored by this app only; on macOS allKeys() otherwise includes system-wide defaults."""
+    settings.setFallbacksEnabled(False)
+    return settings.allKeys()
+
+
+def migrate_legacy_settings(settings):
+    if app_keys(settings):
+        return
+    legacy = QSettings(SETTINGS_ORGANIZATION, LEGACY_SETTINGS_APPLICATION)
+    keys = app_keys(legacy)
+    for key in keys:
+        settings.setValue(key, legacy.value(key))
+    if keys:
+        settings.sync()
+        logging.info(f'Migrated {len(keys)} settings from {LEGACY_SETTINGS_APPLICATION}')
+
+
+class LU2METNRWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.settings = QSettings('LU2MET', 'NovaSDR_NR_Filter')
+        self.settings = QSettings(SETTINGS_ORGANIZATION, SETTINGS_APPLICATION)
+        migrate_legacy_settings(self.settings)
         self.processor = AudioProcessor()
         self.processor.log_signal.connect(self.add_log)
         self.init_ui()
@@ -675,7 +706,7 @@ class NovaSDRGUI(QMainWindow):
         layout.addWidget(footer)
         
         # Initial log
-        self.add_log(f"NovaSDR module: {'✓ Available' if NOVASDR_AVAILABLE else '✗ Not available'}")
+        self.add_log(f"Noise reduction module: {'✓ Available' if NR_AVAILABLE else '✗ Not available'}")
         self.add_log(f"MP3 recording: {'✓ Available' if MP3_AVAILABLE else '✗ Not available (will use WAV)'}")
     
     def load_devices(self):
@@ -921,8 +952,8 @@ def self_test():
     Used by the build scripts on the frozen executable; returns an exit code.
     """
     try:
-        if not NOVASDR_AVAILABLE:
-            raise RuntimeError('novasdr_nr extension is not available')
+        if not NR_AVAILABLE:
+            raise RuntimeError('spectral_nr extension is not available')
         logging.info('Self-test: DSP chain')
         rng = np.random.default_rng(7)
         block = rng.normal(0, 0.1, BLOCK_SIZE * 4).astype(np.float32)
@@ -933,7 +964,7 @@ def self_test():
         )
         filtered = signal.sosfilt(sos, block)
         preset = PRESETS_SSB['extreme']
-        nr = novasdr_nr_py.SpectralNoiseReduction(
+        nr = spectral_nr.SpectralNoiseReduction(
             SAMPLE_RATE, preset['gain'], preset['alpha'], preset['asnr']
         )
         output = nr.process(filtered.astype(np.float32))
@@ -979,7 +1010,7 @@ def main():
     palette.setColor(QPalette.HighlightedText, Qt.black)
     app.setPalette(palette)
     
-    gui = NovaSDRGUI()
+    gui = LU2METNRWindow()
     gui.show()
     sys.exit(app.exec_())
 

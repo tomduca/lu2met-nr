@@ -3,9 +3,9 @@ import unittest
 import numpy as np
 
 try:
-    import novasdr_nr
+    import spectral_nr
 except ImportError:
-    novasdr_nr = None
+    spectral_nr = None
 
 
 SAMPLE_RATE = 48000
@@ -30,13 +30,13 @@ def test_signal():
 
 
 def run_filter(signal, gain, alpha, asnr):
-    processor = novasdr_nr.SpectralNoiseReduction(SAMPLE_RATE, gain, alpha, asnr)
+    processor = spectral_nr.SpectralNoiseReduction(SAMPLE_RATE, gain, alpha, asnr)
     blocks = np.split(signal, BLOCKS)
     return np.concatenate([processor.process(block) for block in blocks])
 
 
-@unittest.skipIf(novasdr_nr is None, 'novasdr_nr extension is not installed')
-class NovaSdrNrTests(unittest.TestCase):
+@unittest.skipIf(spectral_nr is None, 'spectral_nr extension is not installed')
+class SpectralNrTests(unittest.TestCase):
     def test_output_length_matches_input(self):
         signal = test_signal()
         output = run_filter(signal, *SSB_PRESETS[0][0])

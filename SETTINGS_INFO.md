@@ -18,7 +18,7 @@ The following settings are saved when the application closes:
 ### Windows
 Settings are stored in the **Windows Registry**:
 ```
-HKEY_CURRENT_USER\Software\LU2MET\NovaSDR_NR_Filter
+HKEY_CURRENT_USER\Software\LU2MET\LU2MET_NR_Filter
 ```
 
 You can view or edit them with `regedit` if needed.
@@ -26,20 +26,21 @@ You can view or edit them with `regedit` if needed.
 ### macOS
 Settings are stored in:
 ```
-~/Library/Preferences/com.LU2MET.NovaSDR_NR_Filter.plist
+~/Library/Preferences/com.lu2met.LU2MET_NR_Filter.plist
 ```
 
 ### Linux
 Settings are stored in:
 ```
-~/.config/LU2MET/NovaSDR_NR_Filter.conf
+~/.config/LU2MET/LU2MET_NR_Filter.conf
 ```
 
 ## Behavior
 
 1. **On launch:** The last saved settings are loaded automatically.
 2. **On close:** The current settings are saved automatically.
-3. **First launch:** Default values are used (Extreme preset, approximately -26 dB DSP input trim, 0 dB master output).
+3. **Earlier versions:** Releases before the rename stored settings under `NovaSDR_NR_Filter` instead of `LU2MET_NR_Filter`. On the first launch of a newer version, those settings are copied to the new location automatically; the old entry is left in place and can be deleted.
+4. **First launch:** Default values are used (Extreme preset, approximately -26 dB DSP input trim, 0 dB master output).
 
 ## Reset Settings
 
@@ -47,17 +48,17 @@ To restore the defaults, remove the settings for your platform:
 
 ### Windows
 ```powershell
-reg delete "HKEY_CURRENT_USER\Software\LU2MET\NovaSDR_NR_Filter" /f
+reg delete "HKEY_CURRENT_USER\Software\LU2MET\LU2MET_NR_Filter" /f
 ```
 
 ### macOS
 ```bash
-rm ~/Library/Preferences/com.LU2MET.NovaSDR_NR_Filter.plist
+rm ~/Library/Preferences/com.lu2met.LU2MET_NR_Filter.plist
 ```
 
 ### Linux
 ```bash
-rm ~/.config/LU2MET/NovaSDR_NR_Filter.conf
+rm ~/.config/LU2MET/LU2MET_NR_Filter.conf
 ```
 
 ## Notes

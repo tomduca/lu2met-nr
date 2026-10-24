@@ -40,12 +40,12 @@ if (-not (Test-Path $VenvPython)) {
 Invoke-Checked $VenvPython @('-m', 'pip', 'install', '--quiet', '--upgrade', 'pip')
 Invoke-Checked $VenvPython @('-m', 'pip', 'install', '--quiet', '-r', 'requirements-build.txt')
 
-Write-Host '==> Building novasdr_nr Rust extension'
+Write-Host '==> Building spectral_nr Rust extension'
 foreach ($dir in 'build', 'dist') {
     if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
 }
 Invoke-Checked (Join-Path $BuildVenv 'Scripts\maturin.exe') @(
-    'build', '--release', '--locked', '-m', '..\novasdr_nr_py\Cargo.toml', '-o', 'build\wheels'
+    'build', '--release', '--locked', '-m', '..\spectral_nr\Cargo.toml', '-o', 'build\wheels'
 )
 $Wheel = (Get-ChildItem 'build\wheels\*.whl' | Select-Object -First 1).FullName
 Invoke-Checked $VenvPython @('-m', 'pip', 'install', '--quiet', '--force-reinstall', '--no-deps', $Wheel)
@@ -60,7 +60,7 @@ Write-Host '==> Self-test of the packaged app'
 # The app is a GUI executable, so wait for it explicitly to get its exit code.
 # A startup error in a windowed build opens a message box that never closes
 # unattended, so the wait has a time limit.
-$Log = Join-Path $HOME 'novasdr_debug.log'
+$Log = Join-Path $HOME 'lu2met_nr_debug.log'
 $env:QT_QPA_PLATFORM = 'offscreen'
 $SelfTest = Start-Process -FilePath "$AppDir\LU2MET_NR.exe" -ArgumentList '--self-test' -PassThru -NoNewWindow
 Remove-Item Env:QT_QPA_PLATFORM

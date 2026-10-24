@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - **macOS** (tested on macOS 13+)
-- **Python 3.8+** (Python 3.14 recommended)
+- **Python 3.12** (3.9-3.13 also work; 3.14 is not supported by the PyO3 version in use)
 - **Rust** (latest stable)
 - **Virtual audio device** (BlackHole, Loopback, or similar)
 
@@ -24,36 +24,29 @@ brew install blackhole-2ch
 
 Or download from: https://existential.audio/blackhole/
 
-## Step 2: Build Rust Module
-
-```bash
-cd /Users/tomasduca/CascadeProjects/nr_filter/novasdr_nr_py
-
-# Install maturin (PyO3 build tool)
-pip3 install maturin
-
-# Build the Rust module
-maturin develop --release
-```
-
-This compiles the NovaSDR filter and makes it available to Python.
-
-## Step 3: Setup Python Environment
+## Step 2: Set Up the Python Environment
 
 ```bash
 cd /Users/tomasduca/CascadeProjects/nr_filter/audio_processor
 
-# Create virtual environment
-python3 -m venv venv
-
-# Activate virtual environment
+python3.12 -m venv venv
 source venv/bin/activate
+pip install -r requirements.txt PyQt5 pydub maturin
+```
 
-# Install Python dependencies
-pip install sounddevice numpy scipy
+## Step 3: Build the Rust Module
 
-# Verify installation
-python3 -c "import sounddevice; import novasdr_nr_py; print('✓ All dependencies installed')"
+With the virtual environment still active:
+
+```bash
+cd /Users/tomasduca/CascadeProjects/nr_filter/spectral_nr
+maturin develop --release
+```
+
+This compiles the `spectral_nr` noise-reduction module and installs it into the virtual environment. Verify it:
+
+```bash
+python3 -c "import sounddevice, spectral_nr; print('✓ All dependencies installed')"
 ```
 
 ## Step 4: Configure Audio Devices
@@ -70,49 +63,37 @@ python3 -c "import sounddevice; import novasdr_nr_py; print('✓ All dependencie
 1. Open **System Settings** → **Sound** → **Output**
 2. Select **"Multi-Output Device"**
 
-### Identify Device Indices
+### Check Devices
 
 ```bash
 cd /Users/tomasduca/CascadeProjects/nr_filter/audio_processor
 source venv/bin/activate
-python3 audio_processor_novasdr_tunable.py --list-devices
+python3 list_devices.py
 ```
 
-Note the indices for:
-- **Input:** Your virtual audio device (e.g., BlackHole 2ch)
-- **Output:** Your headphones/speakers
-
-### Update Scripts
-
-Edit the run scripts (`run_ultra.sh`, etc.) with your device indices:
-
-```bash
-# Example: if BlackHole is index 5 and headphones are index 2
-python3 audio_processor_novasdr_tunable.py --preset ultra --input 5 --output 2
-```
+Confirm that your capture device (for example, BlackHole 2ch or the USB audio interface connected to the radio) and your headphones or speakers are listed. Devices are selected in the application window.
 
 ## Step 5: Test
 
 ```bash
-cd /Users/tomasduca/CascadeProjects/nr_filter/audio_processor
-./run_ultra.sh
+cd /Users/tomasduca/CascadeProjects/nr_filter
+./audio_processor/run_qt_gui.sh
 ```
 
-You should see:
+The terminal should show:
 ```
-✓ NovaSDR Rust module loaded successfully
-✓ NovaSDR initialized: gain=0.000122, alpha=0.99, asnr=2.0
+✓ Noise reduction module loaded from: ...
 ```
 
-Open a WebSDR in your browser and you should hear processed audio through your headphones.
+Select the input and output devices, press **Start**, and confirm that the IN and OUT meters respond.
 
 ## Troubleshooting
 
-### "ModuleNotFoundError: No module named 'novasdr_nr_py'"
+### "ModuleNotFoundError: No module named 'spectral_nr'"
 
 The Rust module wasn't built. Run:
 ```bash
-cd novasdr_nr_py
+cd spectral_nr
 maturin develop --release
 ```
 
@@ -127,16 +108,13 @@ pip install sounddevice numpy scipy
 
 ### "Invalid number of channels"
 
-Wrong device index. List devices and update scripts:
-```bash
-python3 audio_processor_novasdr_tunable.py --list-devices
-```
+The selected device does not provide input or output channels. Run `python3 list_devices.py` and select a device with input channels for capture and one with output channels for playback.
 
 ### No audio output
 
 1. Verify browser is outputting to Multi-Output Device
 2. Verify Multi-Output Device includes virtual audio device
-3. Verify device indices in scripts are correct
+3. Verify the selected devices in the application window
 4. Check volume is not muted
 
 ## Quick Setup (All Commands)
@@ -149,19 +127,19 @@ source $HOME/.cargo/env
 # Install BlackHole
 brew install blackhole-2ch
 
-# Build Rust module
-cd /Users/tomasduca/CascadeProjects/nr_filter/novasdr_nr_py
-pip3 install maturin
+# Python environment
+cd /Users/tomasduca/CascadeProjects/nr_filter/audio_processor
+python3.12 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt PyQt5 pydub maturin
+
+# Rust module
+cd ../spectral_nr
 maturin develop --release
 
-# Setup Python environment
-cd ../audio_processor
-python3 -m venv venv
-source venv/bin/activate
-pip install sounddevice numpy scipy
-
-# Test
-./run_ultra.sh
+# Run
+cd ..
+./audio_processor/run_qt_gui.sh
 ```
 
 ## Next Steps

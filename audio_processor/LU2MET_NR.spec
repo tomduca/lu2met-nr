@@ -11,15 +11,21 @@ APP_VERSION = os.environ.get('APP_VERSION', '0.0.0')
 IS_MACOS = sys.platform == 'darwin'
 
 datas, binaries, hiddenimports = [], [], []
-for package in ('novasdr_nr', 'sounddevice'):
+for package in ('spectral_nr', 'sounddevice'):
     package_datas, package_binaries, package_imports = collect_all(package)
     datas += package_datas
     binaries += package_binaries
     hiddenimports += package_imports
 datas += copy_metadata('numpy') + copy_metadata('scipy')
+# License and attribution notices shipped with every build (GPL-3.0 requirement).
+datas += [
+    ('../LICENSE', 'licenses'),
+    ('../THIRD_PARTY.md', 'licenses'),
+    ('../third_party/novasdr-wasm', 'licenses/novasdr-wasm'),
+]
 
 a = Analysis(
-    ['novasdr_gui_qt.py'],
+    ['lu2met_nr_gui.py'],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports + ['_sounddevice', 'scipy.signal', 'pydub'],

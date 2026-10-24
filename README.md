@@ -33,14 +33,14 @@ The configured block size is 2048 frames at 48 kHz (about 42.7 ms per block). Ac
 
 ## Repository Layout
 
-- `audio_processor/novasdr_gui_qt.py` — native PyQt5 interface and audio callback.
+- `audio_processor/lu2met_nr_gui.py` — native PyQt5 interface and audio callback.
 - `audio_processor/audio_processor_web.py` — local Flask interface and audio callback.
 - `audio_processor/audio_pipeline.py` — shared channel, gain, meter, and recording helpers.
-- `novasdr_nr_py/` — PyO3 Rust extension with the spectral noise-reduction implementation.
+- `spectral_nr/` — PyO3 Rust extension with the spectral noise-reduction implementation.
 
 ## Source Attribution
 
-The spectral noise-reduction implementation in [`novasdr_nr_py/src/spectralnoisereduction.rs`](novasdr_nr_py/src/spectralnoisereduction.rs) is adapted from [NovaSDR's upstream `src/spectralnoisereduction.rs`](https://github.com/Steven9101/novasdr-wasm/blob/main/src/spectralnoisereduction.rs). See [THIRD_PARTY.md](THIRD_PARTY.md) for direct dependencies, related source trees, and bundled license notices.
+The spectral noise-reduction implementation in [`spectral_nr/src/spectralnoisereduction.rs`](spectral_nr/src/spectralnoisereduction.rs) is adapted from [NovaSDR's upstream `src/spectralnoisereduction.rs`](https://github.com/Steven9101/novasdr-wasm/blob/main/src/spectralnoisereduction.rs). See [THIRD_PARTY.md](THIRD_PARTY.md) for direct dependencies, related source trees, and bundled license notices.
 
 ## License
 
