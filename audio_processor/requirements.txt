@@ -1,4 +1,3 @@
 sounddevice>=0.4.6
 numpy>=1.24.3
 scipy>=1.11.4
-pyrnnoise>=0.4.3

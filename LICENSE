@@ -1,11 +1,12 @@
 HF Audio Processor
 Copyright (c) 2024
 
-This project is based on novasdr-wasm (https://github.com/Steven9101/novasdr-wasm)
-which is licensed under multiple licenses: GPL-3.0, Apache-2.0, and MIT.
+The spectral noise-reduction implementation in `novasdr_nr_py/src/spectralnoisereduction.rs`
+is adapted from `src/spectralnoisereduction.rs` in
+https://github.com/Steven9101/novasdr-wasm.
+The upstream repository provides GPL-3.0, Apache-2.0, and MIT license texts.
 
-The DSP algorithms (spectral noise reduction, noise blanker, auto notch) are
-derived from novasdr-wasm and maintain compatibility with those licenses.
+See `THIRD_PARTY.md` for source attribution and bundled notices.
 
 ---
 

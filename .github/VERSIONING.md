@@ -1,149 +1,67 @@
-# 📌 Sistema de Versionado
+# Build Versioning
 
-## Formato de Versión
+## Version Format
 
-Cada build automático genera una versión única:
+Each build uses a version string in this format:
 
-```
+```text
 v1.0.0-beta-YYYYMMDD-HHMMSS-commit
 ```
 
-### Componentes
+- `v1.0.0-beta`: project base version.
+- `YYYYMMDD`: build date.
+- `HHMMSS`: build time.
+- `commit`: short Git commit hash (7 characters).
 
-- **v1.0.0-beta**: Versión base del proyecto
-- **YYYYMMDD**: Fecha del build (año-mes-día)
-- **HHMMSS**: Hora del build (hora-minuto-segundo)
-- **commit**: Hash corto del commit de git (7 caracteres)
+Example:
 
-### Ejemplos
-
-```
+```text
 v1.0.0-beta-20260429-091530-a3f2c1b
-v1.0.0-beta-20260429-143022-7b9e4d2
-v1.0.0-beta-20260430-080015-c5a1f8e
 ```
 
-## Artifacts
+## Build Artifacts
 
-### Nombres de Archivos
+macOS and Windows archives include the version string in their filenames:
 
-**macOS:**
-```
+```text
 LU2MET_NR-macos-v1.0.0-beta-20260429-091530-a3f2c1b.zip
-```
-
-**Windows:**
-```
 LU2MET_NR-windows-v1.0.0-beta-20260429-091530-a3f2c1b.zip
 ```
 
-### Retención
-
-- **Duración**: 90 días
-- **Ubicación**: GitHub Actions → Artifacts
-- **Acceso**: Cualquier build, incluso de PRs
+GitHub Actions artifacts are configured to be retained for 90 days. Their availability and build triggers are defined in `.github/workflows/build-apps.yml`.
 
 ## Releases
 
-### Tags
+Release tags use the same version format. Release contents include the platform archives and the commit message configured by the workflow. Releases remain available until manually deleted.
 
-Cada release en `main` crea un tag único:
+## Find Previous Builds
 
-```
-v1.0.0-beta-20260429-091530-a3f2c1b
-```
+From **Actions**:
 
-### Características
+1. Open the required workflow run.
+2. Scroll to **Artifacts**.
+3. Download the archive for that build.
 
-- ✅ **No se sobreescriben**: Cada release queda guardado permanentemente
-- ✅ **Historial completo**: Podés volver a cualquier versión anterior
-- ✅ **Prerelease**: Marcados como "Pre-release" (beta)
-- ✅ **Changelog**: Incluye el mensaje del commit
+From **Releases**:
 
-### Estructura del Release
+1. Open the required release.
+2. Download the macOS or Windows archive.
 
-```
-LU2MET NR Filter v1.0.0-beta-20260429-091530-a3f2c1b
-├── LU2MET_NR-macos-v1.0.0-beta-20260429-091530-a3f2c1b.zip
-└── LU2MET_NR-windows-v1.0.0-beta-20260429-091530-a3f2c1b.zip
-```
+## Compare Builds
 
-## Encontrar Versiones Antiguas
-
-### Desde Actions
-
-1. GitHub → **Actions**
-2. Selecciona el workflow run que querés
-3. Bajá a **Artifacts**
-4. Descargá el ZIP con la versión específica
-
-### Desde Releases
-
-1. GitHub → **Releases**
-2. Todas las versiones están listadas
-3. Click en la versión que necesitás
-4. Descargá los assets (ZIPs)
-
-## Comparar Versiones
-
-### Por Fecha
+Compare timestamps in version strings or inspect the corresponding commit range:
 
 ```bash
-# Ordenadas cronológicamente
-v1.0.0-beta-20260429-091530-a3f2c1b  # Más antigua
-v1.0.0-beta-20260429-143022-7b9e4d2
-v1.0.0-beta-20260430-080015-c5a1f8e  # Más reciente
-```
-
-### Por Commit
-
-```bash
-# Ver cambios entre versiones
 git log a3f2c1b..c5a1f8e --oneline
 ```
 
-## Cambiar Versión Base
+## Change the Base Version
 
-Para cambiar de `v1.0.0-beta` a `v1.0.0` o `v1.1.0`:
-
-1. Edita `.github/workflows/build-apps.yml`
-2. Busca `VERSION="v1.0.0-beta-..."`
-3. Cambia `v1.0.0-beta` por la nueva versión
-4. Commit y push
+Edit the version assignment in `.github/workflows/build-apps.yml`, then commit the change. For example:
 
 ```yaml
-# Ejemplo: cambiar a v1.0.0 (release estable)
 VERSION="v1.0.0-$(date +'%Y%m%d-%H%M%S')-$(git rev-parse --short HEAD)"
-
-# Ejemplo: cambiar a v1.1.0 (nueva feature)
 VERSION="v1.1.0-beta-$(date +'%Y%m%d-%H%M%S')-$(git rev-parse --short HEAD)"
 ```
 
-## Ventajas del Sistema
-
-- ✅ **Trazabilidad**: Cada build vinculado a un commit específico
-- ✅ **Rollback fácil**: Volver a cualquier versión anterior
-- ✅ **Testing**: Probar diferentes versiones en paralelo
-- ✅ **Backup automático**: Todas las versiones guardadas
-- ✅ **Sin conflictos**: Nunca se sobreescriben builds
-- ✅ **Timestamp preciso**: Saber exactamente cuándo se compiló
-
-## Limpieza
-
-### Artifacts (automático)
-
-- Se eliminan automáticamente después de 90 días
-- No requiere acción manual
-
-### Releases (manual)
-
-Para eliminar releases antiguos:
-
-1. GitHub → **Releases**
-2. Click en el release a eliminar
-3. **Delete** → Confirmar
-4. **También eliminar el tag** si querés
-
----
-
-**73 de LU2MET** 📻
+The examples show alternative values; use only the intended assignment in the workflow.

@@ -1,31 +1,25 @@
 #!/usr/bin/env python3
-"""
-Script simple para listar dispositivos de audio
-"""
+"""List audio devices available to sounddevice."""
 import sounddevice as sd
 
 print("\n" + "="*60)
-print("  DISPOSITIVOS DE AUDIO DISPONIBLES")
+print("  AVAILABLE AUDIO DEVICES")
 print("="*60 + "\n")
 
 try:
     devices = sd.query_devices()
     print(devices)
     print("\n" + "="*60)
-    print("  INSTRUCCIONES")
+    print("  DEVICE SELECTION")
     print("="*60 + "\n")
-    print("Busca en la lista:")
-    print("  - BlackHole 2ch (para INPUT)")
-    print("  - Tus auriculares/parlantes (para OUTPUT)")
-    print("\nEjemplo de uso:")
-    print("  python audio_processor.py --band 40m --mode SSB --input X --output Y")
+    print("Select a device with input channels for capture and a device with output channels for playback.")
     print("\n")
 except Exception as e:
-    print(f"Error: {e}")
-    print("\nPosibles causas:")
-    print("1. macOS necesita permisos de micrófono")
-    print("   Ve a: System Settings → Privacy & Security → Microphone")
-    print("   Habilita Terminal o tu IDE")
-    print("\n2. Problemas con sounddevice")
-    print("   Reinstala: pip install --force-reinstall sounddevice")
+    print(f"Error querying audio devices: {e}")
+    print("\nPossible causes:")
+    print("1. macOS may require microphone permission")
+    print("   Open System Settings → Privacy & Security → Microphone")
+    print("   Allow access for Terminal or your IDE")
+    print("\n2. sounddevice may need to be reinstalled")
+    print("   Run: pip install --force-reinstall sounddevice")
     print()

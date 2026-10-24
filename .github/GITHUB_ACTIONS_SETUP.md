@@ -1,11 +1,11 @@
-# 🚀 Setup Rápido de GitHub Actions
+# GitHub Actions Setup
 
-## Paso 1: Subir el Workflow
+## Step 1: Push the Workflow
 
 ```bash
 cd /Users/tomasduca/CascadeProjects/nr_filter
 
-# Agregar archivos
+# Stage the files
 git add .github/
 
 # Commit
@@ -15,74 +15,74 @@ git commit -m "Add automated build workflow for macOS and Windows"
 git push origin main
 ```
 
-## Paso 2: Configurar Permisos en GitHub
+## Step 2: Configure GitHub Permissions
 
-1. Abrí tu repositorio: `https://github.com/tomduca/novasdr-audio-processor`
-2. **Settings** → **Actions** → **General**
-3. En **Workflow permissions**:
-   - ✅ Selecciona **Read and write permissions**
-   - ✅ Marca **Allow GitHub Actions to create and approve pull requests**
-4. **Save**
+1. Open the repository: `https://github.com/tomduca/novasdr-audio-processor`.
+2. Select **Settings** → **Actions** → **General**.
+3. Under **Workflow permissions**:
+   - Select **Read and write permissions**.
+   - Select **Allow GitHub Actions to create and approve pull requests**.
+4. Select **Save**.
 
-## Paso 3: Verificar que Funciona
+## Step 3: Verify the Workflow
 
-1. Ve a **Actions** en GitHub
-2. Deberías ver el workflow "Build macOS and Windows Apps" corriendo
-3. Esperá ~15-20 minutos para que compile ambas apps
-4. Una vez completo:
-   - Click en el workflow
-   - Bajá a **Artifacts**
-   - Descargá `LU2MET_NR-macos.zip` y `LU2MET_NR-windows.zip`
+1. Open **Actions** in GitHub.
+2. Find the **Build macOS and Windows Apps** workflow run.
+3. Allow approximately 15-20 minutes for both builds to finish.
+4. When it completes:
+   - Open the workflow run.
+   - Scroll to **Artifacts**.
+   - Download `LU2MET_NR-macos.zip` and `LU2MET_NR-windows.zip`.
 
-## 🎉 ¡Listo!
+## Automatic Builds
 
-Ahora cada vez que hagas push a `main`, se compilarán automáticamente ambas aplicaciones.
+The workflow configuration determines when builds run. Check `.github/workflows/build-apps.yml` for the current triggers.
 
-## 📌 Versionado Automático
+## Automatic Versioning
 
-Cada build tiene su propia versión única:
+Each build receives a unique version:
 
 **Formato:** `v1.0.0-beta-YYYYMMDD-HHMMSS-commit`
 
 **Ejemplo:** `v1.0.0-beta-20260429-091500-a3f2c1b`
 
-- **Fecha y hora:** Timestamp del build
-- **Commit:** Hash corto del commit de git
-- **No se sobreescribe:** Cada build se guarda por separado
-- **Retención:** 90 días en Artifacts
+- **Date and time:** Build timestamp
+- **Commit:** Short Git commit hash
+- **No overwrites:** Each build is stored separately
+- **Retention:** 90 days for artifacts
 
-### Descargar Builds
+### Download Builds
 
-**Opción 1: Desde Actions** (todos los builds)
-- GitHub → Actions → Click en el run → Artifacts
-- Cada artifact tiene su versión única
-- Se guardan por 90 días
+**Option 1: From Actions** (all builds)
+- GitHub → Actions → Open a run → Artifacts
+- Each artifact has a unique version.
+- Artifacts are retained for 90 days.
 
-**Opción 2: Desde Releases** (solo push a main)
-- GitHub → Releases → Selecciona la versión que querés
-- Cada release tiene su tag único
-- **No se sobreescriben** - todas las versiones quedan guardadas
+**Option 2: From Releases** (when a release is created)
+- GitHub → Releases → Select the required version.
+- Each release has a unique tag.
+- **No overwrites:** all published versions remain available.
 
-### Ejecutar Manualmente
+### Run Manually
 
-1. GitHub → Actions
-2. "Build macOS and Windows Apps"
-3. **Run workflow** → **Run workflow**
-
----
-
-## 📋 Checklist
-
-- [ ] Workflow subido a GitHub
-- [ ] Permisos configurados
-- [ ] Primer build exitoso
-- [ ] Artifacts descargables
-- [ ] Apps funcionan correctamente
-
-## ❓ Problemas?
-
-Ver guía completa: `.github/workflows/WORKFLOW_GUIDE.md`
+1. Open GitHub → Actions.
+2. Select **Build macOS and Windows Apps**.
+3. Select **Run workflow** → **Run workflow**.
 
 ---
 
-**73 de LU2MET** 📻
+## Checklist
+
+- [ ] Workflow pushed to GitHub
+- [ ] Permissions configured
+- [ ] First build succeeds
+- [ ] Artifacts can be downloaded
+- [ ] Applications work as expected
+
+## Troubleshooting
+
+See the detailed guide: `.github/workflows/WORKFLOW_GUIDE.md`.
+
+---
+
+**73 de LU2MET**

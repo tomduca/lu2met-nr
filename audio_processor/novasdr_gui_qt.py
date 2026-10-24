@@ -9,17 +9,27 @@ import numpy as np
 import sounddevice as sd
 from scipy import signal
 import time
-from datetime import datetime
 from pathlib import Path
-import wave
 import logging
 
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QLabel, QComboBox, QPushButton, 
                              QTextEdit, QRadioButton, QButtonGroup, QCheckBox,
-                             QGroupBox, QMessageBox, QSlider, QScrollArea)
+                             QGroupBox, QMessageBox, QSlider, QScrollArea, QProgressBar)
 from PyQt5.QtCore import QThread, pyqtSignal, Qt, QTimer, QSettings
 from PyQt5.QtGui import QFont, QPalette, QColor
+from audio_pipeline import (
+    AsyncMonoRecorder,
+    AudioLevelMeter,
+    BlockConfig,
+    apply_master_output,
+    choose_stream_channels,
+    input_is_clipped,
+    input_trim_slider_to_gain,
+    to_mono,
+    volume_slider_to_gain,
+    write_mono,
+)
 
 # Setup logging to file for debugging when run from Finder
 log_file = Path.home() / 'novasdr_debug.log'
@@ -59,6 +69,34 @@ except ImportError:
 SAMPLE_RATE = 48000
 BLOCK_SIZE = 2048
 
+# Level meter colors, chosen from peak-hold dBFS
+LEVEL_COLOR_OK = '#16a34a'
+LEVEL_COLOR_HOT = '#f59e0b'
+LEVEL_COLOR_CLIP = '#dc2626'
+
+
+def level_color(peak_dbfs):
+    if peak_dbfs >= -1.0:
+        return LEVEL_COLOR_CLIP
+    if peak_dbfs >= -6.0:
+        return LEVEL_COLOR_HOT
+    return LEVEL_COLOR_OK
+
+
+def level_bar_style(color):
+    return (
+        'QProgressBar { background: #d1d5db; border: 0; border-radius: 3px; }'
+        f'QProgressBar::chunk {{ background: {color}; border-radius: 3px; }}'
+    )
+
+
+def led_style(active):
+    if active:
+        return ('background: #dc2626; color: white; font-weight: bold; '
+                'font-size: 10px; border-radius: 3px; padding: 1px;')
+    return ('background: #e5e7eb; color: #9ca3af; font-size: 10px; '
+            'border-radius: 3px; padding: 1px;')
+
 # Presets
 PRESETS_SSB = {
     'moderate': {'gain': 1.0/1024.0, 'alpha': 0.98, 'asnr': 20.0, 'post_gain': 1.5},
@@ -96,11 +134,24 @@ class AudioProcessor(QThread):
         self.stream = None
         self.novasdr_nr = None
         self.post_gain = 14.0
-        self.input_gain = 0.05  # Default input gain (5% - very low for hot inputs)
+        self.input_gain = input_trim_slider_to_gain(36)
         self.output_volume = 1.0  # Default output volume (100%)
+        self.input_meter = AudioLevelMeter()
+        self.output_meter = AudioLevelMeter()
+        self.input_clipping_seen = False
+        self.limiter_active_seen = False
         self.bandpass_filter = None
         self.zi_bandpass = None
-        self.recording_data = []
+        self.block_config = BlockConfig({
+            'bypass': False,
+            'input_gain': self.input_gain,
+            'output_volume': self.output_volume,
+            'bandpass_filter': None,
+            'zi_bandpass': None,
+            'novasdr_nr': None,
+            'post_gain': self.post_gain,
+        })
+        self.recorder = None
         self.callback_count = 0
         
     def create_bandpass_filter(self, mode):
@@ -128,65 +179,55 @@ class AudioProcessor(QThread):
             logging.warning(f"Audio status: {status}")
             print(f"Audio status: {status}", file=sys.stderr)
         
-        # Handle any number of input channels - extract mono
-        if indata.ndim == 1:
-            # Already mono
-            audio_data = indata.copy()
-        elif indata.shape[1] == 1:
-            # Single channel in 2D array
-            audio_data = indata[:, 0].copy()
-        else:
-            # Multiple channels - mix to mono
-            audio_data = np.mean(indata, axis=1)
-        
-        # Apply input gain to prevent saturation
-        audio_data = audio_data * self.input_gain
-        
-        if self.bypass or not NOVASDR_AVAILABLE or self.novasdr_nr is None:
+        config = self.block_config.apply_pending()
+        self.input_meter.update(indata, SAMPLE_RATE)
+        self.input_clipping_seen = self.input_clipping_seen or input_is_clipped(indata)
+        audio_data = to_mono(indata)
+
+        if config['bypass'] or not NOVASDR_AVAILABLE or config['novasdr_nr'] is None:
+            # Bypass disables processing but retains the master output stage.
             filtered_audio = audio_data
             if self.callback_count == 1:
-                logging.info("Audio callback: BYPASS mode")
+                logging.info("Audio callback: BYPASS mode (transparent pass-through)")
         else:
+            # Apply input gain to prevent saturation
+            audio_data = audio_data * config['input_gain']
+
             try:
-                if self.bandpass_filter is not None:
-                    filtered_audio, self.zi_bandpass = signal.sosfilt(
-                        self.bandpass_filter, audio_data, zi=self.zi_bandpass
+                if config['bandpass_filter'] is not None:
+                    filtered_audio, config['zi_bandpass'] = signal.sosfilt(
+                        config['bandpass_filter'], audio_data, zi=config['zi_bandpass']
                     )
                 else:
                     filtered_audio = audio_data
-                
-                filtered_audio = self.novasdr_nr.process(filtered_audio.astype(np.float32))
-                filtered_audio = filtered_audio * self.post_gain
-                
+
+                filtered_audio = config['novasdr_nr'].process(filtered_audio.astype(np.float32))
+                filtered_audio = filtered_audio * config['post_gain']
+
                 if self.callback_count == 1:
                     logging.info(f"Audio callback: PROCESSING mode (input level: {np.abs(audio_data).max():.4f}, output level: {np.abs(filtered_audio).max():.4f})")
             except Exception as e:
                 logging.error(f"✗ Audio processing error: {e}", exc_info=True)
                 print(f"✗ Audio processing error: {e}")
                 filtered_audio = audio_data
-        
-        # Apply output volume control
-        filtered_audio = filtered_audio * self.output_volume
-        
-        filtered_audio = np.clip(filtered_audio, -0.95, 0.95)
-        
-        if self.recording:
-            self.recording_data.append(filtered_audio.copy())
-        
-        # Handle any number of output channels
-        if outdata.ndim == 1:
-            # Mono output
-            outdata[:] = filtered_audio
-        else:
-            # Multi-channel output - duplicate to all channels
-            for ch in range(outdata.shape[1]):
-                outdata[:, ch] = filtered_audio
+
+        filtered_audio, limiter_active = apply_master_output(
+            filtered_audio, config['output_volume']
+        )
+        self.limiter_active_seen = self.limiter_active_seen or limiter_active
+        self.output_meter.update(filtered_audio, SAMPLE_RATE)
+
+        if self.recording and self.recorder is not None:
+            self.recorder.submit(filtered_audio)
+
+        write_mono(outdata, filtered_audio)
     
     def start_processing(self, input_dev, output_dev, preset, mode):
         self.input_device = input_dev
         self.output_device = output_dev
         self.preset = preset
         self.mode = mode
+        self.reset_meters()
         
         self.bandpass_filter, self.zi_bandpass = self.create_bandpass_filter(mode)
         
@@ -201,6 +242,12 @@ class AudioProcessor(QThread):
                     preset_config['asnr']
                 )
                 self.post_gain = preset_config['post_gain']
+                self.block_config.schedule(
+                    bandpass_filter=self.bandpass_filter,
+                    zi_bandpass=self.zi_bandpass,
+                    novasdr_nr=self.novasdr_nr,
+                    post_gain=self.post_gain,
+                )
                 logging.info(f"✓ NovaSDR filter initialized: {preset} mode {mode}")
                 print(f"✓ NovaSDR filter initialized: {preset} mode {mode}")
             except Exception as e:
@@ -217,8 +264,7 @@ class AudioProcessor(QThread):
             input_info = sd.query_devices(input_dev)
             output_info = sd.query_devices(output_dev)
             
-            input_channels = min(input_info['max_input_channels'], 2)  # Use up to 2 channels
-            output_channels = min(output_info['max_output_channels'], 2)  # Use up to 2 channels
+            input_channels, output_channels = choose_stream_channels(input_info, output_info)
             
             logging.info(f"Input device: {input_channels} channels, Output device: {output_channels} channels")
             print(f"Input device: {input_channels} channels, Output device: {output_channels} channels")
@@ -237,6 +283,15 @@ class AudioProcessor(QThread):
             raise
         
         try:
+            self.block_config.schedule(
+                bypass=self.bypass,
+                input_gain=self.input_gain,
+                output_volume=self.output_volume,
+                bandpass_filter=self.bandpass_filter,
+                zi_bandpass=self.zi_bandpass,
+                novasdr_nr=self.novasdr_nr,
+                post_gain=self.post_gain,
+            )
             self.stream.start()
             self.running = True
             logging.info("✓ Audio stream started successfully")
@@ -257,7 +312,15 @@ class AudioProcessor(QThread):
             self.stream.close()
             self.stream = None
         self.running = False
+        if self.recording:
+            self.stop_recording()
         self.log_signal.emit("✓ Audio processing stopped")
+
+    def reset_meters(self):
+        self.input_meter.reset()
+        self.output_meter.reset()
+        self.input_clipping_seen = False
+        self.limiter_active_seen = False
     
     def set_mode(self, mode):
         self.mode = mode
@@ -273,6 +336,13 @@ class AudioProcessor(QThread):
                 preset_config['asnr']
             )
             self.post_gain = preset_config['post_gain']
+
+        self.block_config.schedule(
+            bandpass_filter=self.bandpass_filter,
+            zi_bandpass=self.zi_bandpass,
+            novasdr_nr=self.novasdr_nr,
+            post_gain=self.post_gain,
+        )
             
         config = BANDPASS_CONFIG[mode]
         self.log_signal.emit(f"Mode changed to {mode} (BW: {config['low']}-{config['high']} Hz)")
@@ -290,59 +360,39 @@ class AudioProcessor(QThread):
                 preset_config['asnr']
             )
             self.post_gain = preset_config['post_gain']
+            self.block_config.schedule(
+                novasdr_nr=self.novasdr_nr,
+                post_gain=self.post_gain,
+            )
             self.log_signal.emit(f"Preset changed to {preset} ({self.mode} mode)")
     
     def start_recording(self):
+        recordings_dir = Path(__file__).parent / 'recordings'
+        self.recorder = AsyncMonoRecorder(recordings_dir, SAMPLE_RATE, MP3_AVAILABLE)
+        self.recorder.start()
         self.recording = True
-        self.recording_data = []
         self.log_signal.emit("🔴 Recording started")
     
     def stop_recording(self):
         self.recording = False
-        
-        if not self.recording_data:
+        recorder = self.recorder
+        self.recorder = None
+        if recorder is None:
             self.log_signal.emit("⏹️ Recording stopped - No data recorded")
             return None
         
         try:
-            recordings_dir = Path(__file__).parent / 'recordings'
-            recordings_dir.mkdir(exist_ok=True)
-            
-            now = datetime.now()
-            audio_data = np.concatenate(self.recording_data)
-            duration = len(audio_data) / SAMPLE_RATE
-            
-            self.log_signal.emit(f"Processing {len(self.recording_data)} chunks, {duration:.1f}s total...")
-            
-            audio_int16 = (audio_data * 32767).astype(np.int16)
-            
-            if MP3_AVAILABLE:
-                filename = f"recording_{now.strftime('%Y%m%d_%H%M%S')}.mp3"
-                filepath = recordings_dir / filename
-                
-                temp_wav = recordings_dir / f"temp_{now.strftime('%Y%m%d_%H%M%S')}.wav"
-                with wave.open(str(temp_wav), 'wb') as wf:
-                    wf.setnchannels(1)
-                    wf.setsampwidth(2)
-                    wf.setframerate(SAMPLE_RATE)
-                    wf.writeframes(audio_int16.tobytes())
-                
-                audio = AudioSegment.from_wav(str(temp_wav))
-                audio.export(str(filepath), format='mp3', bitrate='128k')
-                temp_wav.unlink()
-            else:
-                filename = f"recording_{now.strftime('%Y%m%d_%H%M%S')}.wav"
-                filepath = recordings_dir / filename
-                
-                with wave.open(str(filepath), 'wb') as wf:
-                    wf.setnchannels(1)
-                    wf.setsampwidth(2)
-                    wf.setframerate(SAMPLE_RATE)
-                    wf.writeframes(audio_int16.tobytes())
-            
-            self.recording_data = []
+            filepath, duration, dropped_chunks, conversion_error = recorder.stop()
+            filename = filepath.name
+            if not duration:
+                self.log_signal.emit("⏹️ Recording stopped - No data recorded")
+                return None
             self.log_signal.emit(f"⏹️ Saved: {filepath}")
-            self.log_signal.emit(f"   Duration: {duration:.1f}s, Format: {'MP3' if MP3_AVAILABLE else 'WAV'}")
+            self.log_signal.emit(f"   Duration: {duration:.1f}s, Format: {filepath.suffix[1:].upper()}")
+            if dropped_chunks:
+                self.log_signal.emit(f"WARNING: Recording dropped {dropped_chunks} audio blocks")
+            if conversion_error:
+                self.log_signal.emit(f"WARNING: MP3 conversion failed; WAV retained: {conversion_error}")
             return filename, duration
             
         except Exception as e:
@@ -361,6 +411,9 @@ class NovaSDRGUI(QMainWindow):
         self.init_ui()
         self.load_devices()
         self.load_settings()
+        self.level_timer = QTimer(self)
+        self.level_timer.timeout.connect(self.update_audio_levels)
+        self.level_timer.start(100)
         
     def init_ui(self):
         self.setWindowTitle('LU2MET NR Filter v1.0.0-beta')
@@ -462,25 +515,25 @@ class NovaSDRGUI(QMainWindow):
         
         # Input Gain Control
         gain_layout = QHBoxLayout()
-        gain_label = QLabel('Input Gain:')
+        gain_label = QLabel('DSP Input Trim:')
         gain_layout.addWidget(gain_label)
         
         self.gain_slider = QSlider(Qt.Horizontal)
         self.gain_slider.setMinimum(1)  # 1% minimum
         self.gain_slider.setMaximum(100)  # 100% maximum
-        self.gain_slider.setValue(5)  # 5% default (very low for hot inputs)
+        self.gain_slider.setValue(36)  # Approximately -26 dB, matching the previous 5% default.
         self.gain_slider.setTickPosition(QSlider.TicksBelow)
         self.gain_slider.setTickInterval(10)
         self.gain_slider.valueChanged.connect(self.on_gain_change)
         gain_layout.addWidget(self.gain_slider)
         
-        self.gain_value_label = QLabel('5%')
-        self.gain_value_label.setStyleSheet('font-weight: bold; min-width: 40px;')
+        self.gain_value_label = QLabel('-25.9 dB')
+        self.gain_value_label.setStyleSheet('font-weight: bold; min-width: 68px;')
         gain_layout.addWidget(self.gain_value_label)
         
         control_layout.addLayout(gain_layout)
         
-        gain_info = QLabel('⚠️ Start low (1-10%) and increase until audio is clear without saturation')
+        gain_info = QLabel('DSP input trim: -40 to 0 dB. It cannot undo clipping before capture.')
         gain_info.setStyleSheet('color: #f59e0b; font-size: 10px; padding: 2px;')
         control_layout.addWidget(gain_info)
         
@@ -498,19 +551,48 @@ class NovaSDRGUI(QMainWindow):
         self.volume_slider.valueChanged.connect(self.on_volume_change)
         volume_layout.addWidget(self.volume_slider)
         
-        self.volume_value_label = QLabel('100%')
-        self.volume_value_label.setStyleSheet('font-weight: bold; min-width: 40px;')
+        self.volume_value_label = QLabel('0.0 dB')
+        self.volume_value_label.setStyleSheet('font-weight: bold; min-width: 60px;')
         volume_layout.addWidget(self.volume_value_label)
         
         control_layout.addLayout(volume_layout)
         
-        volume_info = QLabel('💡 Adjust final output volume (can boost up to 400%)')
+        volume_info = QLabel('Master level applies to bypass and filtered audio; output peaks are limited.')
         volume_info.setStyleSheet('color: #3b82f6; font-size: 10px; padding: 2px;')
         control_layout.addWidget(volume_info)
         
         self.bypass_check = QCheckBox('Bypass (pass-through)')
         self.bypass_check.stateChanged.connect(self.on_bypass_change)
         control_layout.addWidget(self.bypass_check)
+
+        for label, bar_name, value_name, led_name, led_text in (
+            ('IN', 'input_level_bar', 'input_level_value', 'input_clip_led', 'CLIP'),
+            ('OUT', 'output_level_bar', 'output_level_value', 'output_limit_led', 'LIMIT'),
+        ):
+            level_row = QHBoxLayout()
+            name_label = QLabel(label)
+            name_label.setFixedWidth(32)
+            level_row.addWidget(name_label)
+            level_bar = QProgressBar()
+            level_bar.setRange(0, 60)
+            level_bar.setValue(0)
+            level_bar.setTextVisible(False)
+            level_bar.setFixedHeight(12)
+            level_bar.setStyleSheet(level_bar_style(LEVEL_COLOR_OK))
+            setattr(self, bar_name, level_bar)
+            level_row.addWidget(level_bar, 1)
+            value_label = QLabel('RMS -120.0 | PK -120.0 dBFS')
+            value_label.setFont(QFont('Courier New', 10))
+            value_label.setFixedWidth(225)
+            setattr(self, value_name, value_label)
+            level_row.addWidget(value_label)
+            led = QLabel(led_text)
+            led.setAlignment(Qt.AlignCenter)
+            led.setFixedWidth(48)
+            led.setStyleSheet(led_style(False))
+            setattr(self, led_name, led)
+            level_row.addWidget(led)
+            control_layout.addLayout(level_row)
         
         buttons_layout = QHBoxLayout()
         self.start_btn = QPushButton('▶ Start')
@@ -583,8 +665,8 @@ class NovaSDRGUI(QMainWindow):
         layout.addWidget(cafecito)
         
         # Footer with repository link (smaller)
-        footer = QLabel('Based on NovaSDR NR filter | '
-                       '<a href="https://github.com/tomduca/novasdr-audio-processor" style="color: #3b82f6; text-decoration: none;">GitHub</a>')
+        footer = QLabel('Project source: '
+                   '<a href="https://github.com/tomduca/novasdr-audio-processor" style="color: #3b82f6; text-decoration: none;">LU2MET NR Filter on GitHub</a>')
         footer.setOpenExternalLinks(True)
         footer.setAlignment(Qt.AlignCenter)
         footer.setStyleSheet('color: #6b7280; font-size: 9px; padding: 2px;')
@@ -634,35 +716,36 @@ class NovaSDRGUI(QMainWindow):
         self.update_preset_info()
     
     def on_gain_change(self, value):
-        gain = value / 100.0
+        gain = input_trim_slider_to_gain(value)
         self.processor.input_gain = gain
-        self.gain_value_label.setText(f'{value}%')
+        self.processor.block_config.schedule(input_gain=gain)
+        self.gain_value_label.setText(f'{20 * np.log10(gain):.1f} dB')
         if self.processor.running:
-            self.add_log(f"Input gain: {value}%")
+            self.add_log(f"DSP input trim: {20 * np.log10(gain):.1f} dB")
     
     def on_volume_change(self, value):
-        # Logarithmic volume scaling for better control
-        # Maps slider range (10-400) to logarithmic volume curve
-        # Formula: volume = 10^((value/100 - 1) * 2)
-        # This gives smooth control at low volumes and proper boost at high volumes
-        linear_percent = value / 100.0
-        
-        if value <= 100:
-            # Below 100%: logarithmic attenuation (10% to 100%)
-            # Maps 10-100 slider to 0.1-1.0 volume logarithmically
-            log_volume = 10 ** ((linear_percent - 1) * 2)
-        else:
-            # Above 100%: logarithmic boost (100% to 400%)
-            # Maps 100-400 slider to 1.0-4.0 volume logarithmically
-            log_volume = 10 ** ((linear_percent - 1) * 0.6)
-        
+        log_volume = volume_slider_to_gain(value)
         self.processor.output_volume = log_volume
-        self.volume_value_label.setText(f'{value}%')
+        self.processor.block_config.schedule(output_volume=log_volume)
+        self.volume_value_label.setText(f'{20 * np.log10(log_volume):+.1f} dB')
         if self.processor.running:
-            self.add_log(f"Output volume: {value}% (actual: {log_volume:.2f}x)")
+            self.add_log(f'Master output: {20 * np.log10(log_volume):+.1f} dB ({log_volume:.2f}x)')
+
+    def update_audio_levels(self):
+        input_rms, _, input_hold = self.processor.input_meter.snapshot
+        output_rms, _, output_hold = self.processor.output_meter.snapshot
+        self.input_level_bar.setValue(max(0, min(60, round(input_rms + 60))))
+        self.output_level_bar.setValue(max(0, min(60, round(output_rms + 60))))
+        self.input_level_value.setText(f'RMS {input_rms:6.1f} | PK {input_hold:6.1f} dBFS')
+        self.output_level_value.setText(f'RMS {output_rms:6.1f} | PK {output_hold:6.1f} dBFS')
+        self.input_level_bar.setStyleSheet(level_bar_style(level_color(input_hold)))
+        self.output_level_bar.setStyleSheet(level_bar_style(level_color(output_hold)))
+        self.input_clip_led.setStyleSheet(led_style(self.processor.input_clipping_seen))
+        self.output_limit_led.setStyleSheet(led_style(self.processor.limiter_active_seen))
     
     def on_bypass_change(self, state):
         self.processor.bypass = (state == Qt.Checked)
+        self.processor.block_config.schedule(bypass=self.processor.bypass)
         status = "BYPASSED" if self.processor.bypass else "ACTIVE"
         self.add_log(f"Processing {status}")
     
@@ -754,8 +837,14 @@ class NovaSDRGUI(QMainWindow):
                     break
             
             # Load input gain
-            input_gain = int(self.settings.value('audio/input_gain', 5))
-            self.gain_slider.setValue(input_gain)
+            if self.settings.contains('audio/input_trim_slider'):
+                input_trim = int(self.settings.value('audio/input_trim_slider', 36))
+            else:
+                legacy_percent = int(self.settings.value('audio/input_gain', 5))
+                legacy_gain = min(1.0, max(0.01, legacy_percent / 100.0))
+                legacy_db = 20.0 * np.log10(legacy_gain)
+                input_trim = round(1.0 + ((legacy_db + 40.0) / 40.0) * 99.0)
+            self.gain_slider.setValue(input_trim)
             
             # Load output volume
             output_volume = int(self.settings.value('audio/output_volume', 100))
@@ -802,7 +891,7 @@ class NovaSDRGUI(QMainWindow):
                     break
             
             # Save input gain
-            self.settings.setValue('audio/input_gain', self.gain_slider.value())
+            self.settings.setValue('audio/input_trim_slider', self.gain_slider.value())
             
             # Save output volume
             self.settings.setValue('audio/output_volume', self.volume_slider.value())

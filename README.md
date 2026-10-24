@@ -1,205 +1,47 @@
-# NovaSDR Audio Processor
+# LU2MET NR Filter
 
-Hybrid **Python + Rust** pipeline integrating NovaSDR Spectral Noise Reduction filter for HF audio processing on macOS.
+A local, live HF audio processor with a native PyQt5 interface and an optional Flask browser interface. Audio capture and playback use `sounddevice`; spectral noise reduction is provided by a Rust extension.
 
-## ✅ Final Solution
+## Run
 
-- **Noise reduction:** Nearly identical to original NovaSDR web
-- **Latency:** ~43ms (ultra low)
-- **Volume:** Optimal with automatic compensation
-- **Quality:** Excellent, no artifacts
-- **Recording:** Save processed audio as MP3 or WAV
+From the repository root, start the native application:
 
-## 🚀 Quick Start
-
-**First time setup:** See **[INSTALL.md](INSTALL.md)** for installation instructions.
-
-### Native GUI (PyQt5 - Recommended)
 ```bash
-cd audio_processor
-./run_qt_gui.sh
+./audio_processor/run_qt_gui.sh
 ```
 
-### Web GUI (Browser-based)
+To use the browser interface instead:
+
 ```bash
-cd audio_processor
-./run_web.sh
-# Open http://localhost:5001
+./audio_processor/run_web.sh
 ```
 
-See **[GUI_OPTIONS.md](GUI_OPTIONS.md)** for detailed comparison and instructions.
+The web interface is served locally on port `5001`.
 
-### Command Line Version
-```bash
-cd audio_processor
-./run_ultra.sh
-```
+See [INSTALL.md](INSTALL.md) for development setup, [BUILD.md](BUILD.md) for platform packaging instructions, and [GUI_OPTIONS.md](GUI_OPTIONS.md) for the interface overview.
 
-## ⚙️ Usage Instructions
+## Audio Path
 
-### Audio Level Calibration
+- Audio is captured at 48 kHz and normalized to mono before bypass or processing. Mono is copied to every selected output channel.
+- The DSP input trim affects only the filtered path. Master Output applies to both bypass and filtered audio.
+- The filtered path applies an SSB or CW band-pass filter, followed by spectral noise reduction.
+- A shared soft limiter controls output peaks. It cannot repair clipping that occurred before the application received the signal.
+- Live meters show recent RMS and a decaying peak hold. Input clipping detection also catches flat-topped peaks below 0 dBFS, which occur when an interface clips at its ADC and then scales the signal down. Input clipping and limiter warnings remain latched until the stream is restarted. See [Input Level Calibration](audio_processor/USAGE.md#input-level-calibration) for setting the receiver level.
+- Recording uses a bounded queue and a background writer so file I/O and encoding stay out of the audio callback.
 
-**Important:** The radio's output audio level must be set very low for optimal noise reduction.
+The configured block size is 2048 frames at 48 kHz (about 42.7 ms per block). Actual end-to-end latency depends on the selected devices and their host buffers; verify it on the target setup.
 
-1. **Start without filtering** (bypass mode enabled)
-2. **Adjust your radio's volume** to a very low level
-3. **Test:** Disconnect the audio cable - you should barely hear anything from the radio's speaker
-4. **Enable filtering** once the level is properly calibrated
+## Repository Layout
 
-**Why?** High input levels can cause distortion and reduce the effectiveness of the noise reduction filter. The filter works best with clean, low-level audio signals.
+- `audio_processor/novasdr_gui_qt.py` — native PyQt5 interface and audio callback.
+- `audio_processor/audio_processor_web.py` — local Flask interface and audio callback.
+- `audio_processor/audio_pipeline.py` — shared channel, gain, meter, and recording helpers.
+- `novasdr_nr_py/` — PyO3 Rust extension with the spectral noise-reduction implementation.
 
-## Architecture
+## Source Attribution
 
-```
-WebSDR → Multi-Output Device → BlackHole 2ch
-              ↓
-    Python (sounddevice I/O)
-              ↓
-    Rust (NovaSDR Filter)
-              ↓
-    Post-Gain Compensation
-              ↓
-    Jabra / Speakers
-```
-
-## Features
-
-### Graphical Interface
-- ✅ Device selection (input/output)
-- ✅ Preset selection (Moderate, Aggressive, Ultra, Extreme)
-- ✅ Bypass toggle (pass-through mode)
-- ✅ Real-time log output
-- ✅ Start/Stop control
-- ✅ Audio recording (MP3/WAV with timestamp)
-
-### Command Line Presets
-
-- **`./run_ultra.sh`** ⭐ - Maximum reduction (RECOMMENDED)
-- **`./run_aggressive.sh`** - Strong reduction
-- **`./run_moderate.sh`** - Moderate reduction
-
-## Audio Configuration
-
-### Requirements
-
-1. **Virtual audio capture device** (one of these):
-   - BlackHole (free)
-   - Loopback (paid)
-   - Soundflower
-   - Other virtual audio software
-
-2. **Multi-Output Device** (Audio MIDI Setup):
-   - Include ONLY the virtual capture device
-   - DO NOT include headphones/speakers (prevents echo)
-
-3. **System Settings → Sound → Output:**
-   - Select "Multi-Output Device"
-
-### Identify Device Indices
-
-Run the script to see devices:
-```bash
-cd audio_processor
-./run_ultra.sh
-```
-
-Look for:
-- **Input:** Virtual capture device (with input channels)
-- **Output:** Headphones/speakers (with output channels)
-
-Note the numeric indices and configure in the scripts.
-
-## 📦 Standalone Applications
-
-Build standalone desktop applications (no Python required):
-
-- **macOS:** `cd audio_processor && ./build_macos.sh` → Creates `.app` bundle
-- **Windows:** `cd audio_processor && build_windows.bat` → Creates `.exe` file
-
-See **[STANDALONE_APP_GUIDE.md](STANDALONE_APP_GUIDE.md)** for complete instructions.
-
-## Documentation
-
-### Build & Distribution
-- **`BUILD.md`** - **Complete build guide for macOS and Windows**
-- **`GUI_OPTIONS.md`** - Compare Native vs Web GUI options
-- **`WINDOWS_BUILD.md`** - Windows-specific build details
-- **`STANDALONE_APP_GUIDE.md`** - Distribution and packaging guide
-
-### Usage & Technical
-- **`audio_processor/USAGE.md`** - Complete usage guide
-- **`SOLUTION_SUMMARY.md`** - Technical project summary
-- **`INSTALL.md`** - Development environment setup
-
-## Components
-
-### Rust Module (`novasdr_nr_py/`)
-- NovaSDR Spectral Noise Reduction filter
-- Compiled with PyO3 for Python
-- Performance: ~0.1-0.2ms per block
-
-### Python Processor (`audio_processor/`)
-- Audio I/O with sounddevice
-- Integration with Rust module
-- Automatic volume compensation
-
-## Technologies
-
-- **Python:** sounddevice, numpy, scipy
-- **Rust:** PyO3, rustfft
-- **DSP:** NovaSDR Spectral NR (MMSE)
-
-## Results
-
-✅ **Pipeline working**  
-✅ **Quality equal to NovaSDR web**  
-✅ **Latency ~43ms**  
-✅ **Optimal volume**  
-
----
-For maximum audio quality:
-
-1. **Increase buffer_size**: 4096 or 8192 samples
-2. **Adjust nr_alpha**: Higher values (0.97-0.99) for more aggressive smoothing
-3. **Enable all stages**: Spectral NR + Noise Blanker + Auto Notch
-4. **High sample rate**: Use 48kHz or 96kHz if possible
-
-Recommended configuration for maximum quality:
-
-```toml
-[dsp]
-buffer_size = 4096
-spectral_nr_enabled = true
-nr_gain = 0.001
-nr_alpha = 0.98
-nr_asnr = 35.0
-noise_blanker_enabled = true
-nb_threshold = 0.9
-autonotch_enabled = true
-```
-
-## Troubleshooting
-
-### Audio device not detected
-
-- Verify the device is configured in Audio MIDI Setup
-- Use `--list-devices` to see exact names
-- Name may contain spaces, use quotes
-
-### Choppy or glitchy audio
-
-- Increase `buffer_size` in config.toml
-- Verify no other processes are consuming too much CPU
-- Reduce the number of enabled filters
-
-### Too much noise reduction ("metallic" audio)
-
-- Increase `nr_gain` (less aggressive)
-- Reduce `nr_alpha` (less smoothing)
-- Adjust `nr_asnr` according to actual SNR conditions
+The spectral noise-reduction implementation in [`novasdr_nr_py/src/spectralnoisereduction.rs`](novasdr_nr_py/src/spectralnoisereduction.rs) is adapted from [NovaSDR's upstream `src/spectralnoisereduction.rs`](https://github.com/Steven9101/novasdr-wasm/blob/main/src/spectralnoisereduction.rs). See [THIRD_PARTY.md](THIRD_PARTY.md) for direct dependencies, related source trees, and bundled license notices.
 
 ## License
 
-Based on [novasdr-wasm](https://github.com/Steven9101/novasdr-wasm) which uses multiple licenses (GPL-3.0, Apache-2.0, MIT).
-
-This project maintains compatibility with those licenses.
+See [`LICENSE`](LICENSE) and the referenced upstream notices for license terms.

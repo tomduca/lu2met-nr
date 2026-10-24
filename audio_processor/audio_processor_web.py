@@ -11,10 +11,20 @@ import numpy as np
 import sounddevice as sd
 from scipy import signal
 import time
-import wave
 import os
-from datetime import datetime
 from pathlib import Path
+from audio_pipeline import (
+    AsyncMonoRecorder,
+    AudioLevelMeter,
+    BlockConfig,
+    apply_master_output,
+    choose_stream_channels,
+    input_is_clipped,
+    input_trim_slider_to_gain,
+    to_mono,
+    volume_slider_to_gain,
+    write_mono,
+)
 try:
     from pydub import AudioSegment
     MP3_AVAILABLE = True
@@ -40,12 +50,20 @@ processor_state = {
     'stream': None,
     'novasdr_nr': None,
     'post_gain': 14.0,
+    'input_gain': input_trim_slider_to_gain(36),
+    'output_volume': volume_slider_to_gain(100),
     'logs': [],
     'recording': False,
-    'recording_file': None,
-    'recording_data': [],
+    'recorder': None,
     'bandpass_filter': None,
-    'zi_bandpass': None
+    'zi_bandpass': None,
+    'block_config': None,
+    'meters': {
+        'input': AudioLevelMeter(),
+        'output': AudioLevelMeter(),
+        'input_clipping': False,
+        'limiter_active': False,
+    },
 }
 
 # Audio parameters
@@ -74,6 +92,16 @@ BANDPASS_CONFIG = {
     'CW': {'low': 600, 'high': 900}      # Narrow CW filter (300 Hz centered at 750 Hz)
 }
 
+processor_state['block_config'] = BlockConfig({
+    'bypass': processor_state['bypass'],
+    'input_gain': processor_state['input_gain'],
+    'output_volume': processor_state['output_volume'],
+    'novasdr_nr': processor_state['novasdr_nr'],
+    'post_gain': processor_state['post_gain'],
+    'bandpass_filter': processor_state['bandpass_filter'],
+    'zi_bandpass': processor_state['zi_bandpass'],
+})
+
 def log(message):
     """Add log message with timestamp"""
     timestamp = time.strftime("%H:%M:%S")
@@ -101,35 +129,43 @@ def audio_callback(indata, outdata, frames, time_info, status):
     """Real-time audio processing callback"""
     if status:
         log(f"Audio status: {status}")
-    
-    audio_data = indata[:, 0].copy()
-    
-    if processor_state['bypass'] or not NOVASDR_AVAILABLE:
+
+    config = processor_state['block_config'].apply_pending()
+    meters = processor_state['meters']
+    meters['input'].update(indata, SAMPLE_RATE)
+    meters['input_clipping'] = meters['input_clipping'] or input_is_clipped(indata)
+    audio_data = to_mono(indata)
+
+    if config['bypass'] or not NOVASDR_AVAILABLE or config['novasdr_nr'] is None:
         filtered_audio = audio_data
     else:
-        # Apply bandpass filter first
-        if processor_state['bandpass_filter'] is not None:
-            filtered_audio, processor_state['zi_bandpass'] = signal.sosfilt(
-                processor_state['bandpass_filter'], 
-                audio_data, 
-                zi=processor_state['zi_bandpass']
-            )
-        else:
+        audio_data = audio_data * config['input_gain']
+        try:
+            if config['bandpass_filter'] is not None:
+                filtered_audio, config['zi_bandpass'] = signal.sosfilt(
+                    config['bandpass_filter'],
+                    audio_data,
+                    zi=config['zi_bandpass'],
+                )
+            else:
+                filtered_audio = audio_data
+            filtered_audio = config['novasdr_nr'].process(filtered_audio.astype(np.float32))
+            filtered_audio = filtered_audio * config['post_gain']
+        except Exception as error:
+            log(f"Audio processing error: {error}")
             filtered_audio = audio_data
-        
-        # Apply NovaSDR noise reduction
-        filtered_audio = processor_state['novasdr_nr'].process(filtered_audio.astype(np.float32))
-        filtered_audio = filtered_audio * processor_state['post_gain']
-    
-    filtered_audio = np.clip(filtered_audio, -0.95, 0.95)
-    
-    # Record audio if recording is active
-    if processor_state['recording']:
-        processor_state['recording_data'].append(filtered_audio.copy())
-    
-    outdata[:, 0] = filtered_audio
-    if outdata.shape[1] > 1:
-        outdata[:, 1] = filtered_audio
+
+    filtered_audio, limiter_active = apply_master_output(
+        filtered_audio, config['output_volume']
+    )
+    meters['limiter_active'] = meters['limiter_active'] or limiter_active
+    meters['output'].update(filtered_audio, SAMPLE_RATE)
+
+    recorder = processor_state['recorder']
+    if processor_state['recording'] and recorder is not None:
+        recorder.submit(filtered_audio)
+
+    write_mono(outdata, filtered_audio)
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -260,6 +296,80 @@ HTML_TEMPLATE = """
         .checkbox-group input[type="checkbox"] {
             width: auto;
         }
+        .gain-control {
+            display: grid;
+            grid-template-columns: minmax(120px, 1fr) minmax(120px, 3fr) 72px;
+            align-items: center;
+            gap: 12px;
+            margin: 12px 0;
+        }
+        .gain-control input[type="range"] { width: 100%; }
+        .gain-value, .level-meter {
+            font-family: 'Courier New', monospace;
+            font-variant-numeric: tabular-nums;
+        }
+        .gain-value { text-align: right; font-weight: 600; }
+        .level-meter {
+            display: grid;
+            gap: 9px;
+            margin-top: 14px;
+        }
+        .level-row {
+            display: grid;
+            grid-template-columns: 28px minmax(80px, 1fr) 235px;
+            align-items: center;
+            gap: 10px;
+            font-size: 12px;
+        }
+        .level-track {
+            position: relative;
+            height: 12px;
+            overflow: visible;
+            background: #d1d5db;
+            border-radius: 3px;
+        }
+        .level-fill {
+            height: 100%;
+            width: 0;
+            background: #16a34a;
+            border-radius: 3px;
+            transition: width 100ms linear;
+        }
+        .level-peak-marker {
+            position: absolute;
+            top: -2px;
+            left: 0;
+            width: 2px;
+            height: 16px;
+            background: #111827;
+            transform: translateX(-1px);
+            transition: left 100ms linear;
+        }
+        .level-value {
+            width: 235px;
+            color: #374151;
+            font-family: 'Courier New', monospace;
+            font-variant-numeric: tabular-nums;
+            text-align: right;
+        }
+        .level-warning { color: #b91c1c; font-weight: 700; }
+        @media (max-width: 480px) {
+            .gain-control {
+                grid-template-columns: minmax(0, 1fr) auto;
+                gap: 6px 10px;
+            }
+            .gain-control input[type="range"] { grid-column: 1 / -1; }
+            .level-row {
+                grid-template-columns: 28px minmax(0, 1fr);
+                gap: 6px 8px;
+            }
+            .level-value {
+                grid-column: 2;
+                width: auto;
+                text-align: left;
+                font-size: 11px;
+            }
+        }
         .buttons {
             display: flex;
             gap: 10px;
@@ -375,6 +485,35 @@ HTML_TEMPLATE = """
             
             <div class="section">
                 <h2>⚙️ Processing Control</h2>
+                <div class="gain-control">
+                    <label for="input-trim">DSP input trim</label>
+                    <input id="input-trim" type="range" min="1" max="100" value="36">
+                    <output class="gain-value" id="input-trim-value">-25.9 dB</output>
+                </div>
+                <div class="gain-control">
+                    <label for="output-volume">Master output</label>
+                    <input id="output-volume" type="range" min="10" max="400" value="100">
+                    <output class="gain-value" id="output-volume-value">0.0 dB</output>
+                </div>
+                <div class="level-meter">
+                    <div class="level-row">
+                        <strong>IN</strong>
+                        <div class="level-track">
+                            <div class="level-fill" id="input-level-fill"></div>
+                            <span class="level-peak-marker" id="input-peak-marker"></span>
+                        </div>
+                        <output class="level-value" id="input-level-value">RMS -120.0 | PK -120.0 dBFS</output>
+                    </div>
+                    <div class="level-row">
+                        <strong>OUT</strong>
+                        <div class="level-track">
+                            <div class="level-fill" id="output-level-fill"></div>
+                            <span class="level-peak-marker" id="output-peak-marker"></span>
+                        </div>
+                        <output class="level-value" id="output-level-value">RMS -120.0 | PK -120.0 dBFS</output>
+                    </div>
+                    <div id="level-warning" class="level-value"></div>
+                </div>
                 <div class="checkbox-group">
                     <input type="checkbox" id="bypass">
                     <label for="bypass" style="margin: 0;">Bypass (Pass-through audio without processing)</label>
@@ -395,17 +534,18 @@ HTML_TEMPLATE = """
                     <button class="btn-rec" id="rec-start-btn" disabled style="background: #dc2626; flex: 1;">🔴 Start Recording</button>
                     <button class="btn-rec" id="rec-stop-btn" disabled style="background: #6b7280; flex: 1;">⏹️ Stop Recording</button>
                 </div>
+                <p id="rec-status" style="display: none; margin-top: 12px;"></p>
+            </div>
             <div class="section">
                 <h2>📋 Log</h2>
                 <div class="log" id="log"></div>
             </div>
             
             <div style="text-align: center; padding: 20px; color: white; font-size: 12px; opacity: 0.8;">
-                <p>NovaSDR Audio Processor</p>
-                <p>Based on <a href="https://github.com/Steven9101/novasdr-wasm" target="_blank" style="color: #86efac; text-decoration: none;">NovaSDR-WASM</a></p>
+                <p>LU2MET NR Filter</p>
                 <p style="margin-top: 10px;">
                     <a href="https://github.com/tomduca/novasdr-audio-processor" target="_blank" style="color: #86efac; text-decoration: none;">
-                        📻 View on GitHub
+                        📻 Project source on GitHub
                     </a>
                 </p>
             </div>
@@ -495,6 +635,59 @@ HTML_TEMPLATE = """
                 body: JSON.stringify({bypass: e.target.checked})
             });
         });
+
+        const inputTrim = document.getElementById('input-trim');
+        const outputVolume = document.getElementById('output-volume');
+
+        inputTrim.addEventListener('input', () => {
+            const value = Number(inputTrim.value);
+            const gainDb = -40 + ((value - 1) / 99) * 40;
+            document.getElementById('input-trim-value').textContent = `${gainDb.toFixed(1)} dB`;
+            fetch('/api/input-trim', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({value})
+            });
+        });
+
+        outputVolume.addEventListener('input', () => {
+            const value = Number(outputVolume.value);
+            const gain = value <= 100
+                ? 10 ** ((value - 100) / 90)
+                : 10 ** (((value - 100) / 300) * Math.log10(4));
+            document.getElementById('output-volume-value').textContent =
+                `${(20 * Math.log10(gain)).toFixed(1)} dB`;
+            fetch('/api/output-volume', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({value})
+            });
+        });
+
+        function meterPosition(dbfs) {
+            return Math.max(0, Math.min(100, ((dbfs + 60) / 60) * 100));
+        }
+
+        setInterval(() => {
+            fetch('/api/levels')
+                .then(r => r.json())
+                .then(levels => {
+                    document.getElementById('input-level-fill').style.width = `${meterPosition(levels.input_rms_dbfs)}%`;
+                    document.getElementById('input-peak-marker').style.left = `${meterPosition(levels.input_peak_hold_dbfs)}%`;
+                    document.getElementById('output-level-fill').style.width = `${meterPosition(levels.output_rms_dbfs)}%`;
+                    document.getElementById('output-peak-marker').style.left = `${meterPosition(levels.output_peak_hold_dbfs)}%`;
+                    document.getElementById('input-level-value').textContent =
+                        `RMS ${levels.input_rms_dbfs.toFixed(1).padStart(6)} | PK ${levels.input_peak_hold_dbfs.toFixed(1).padStart(6)} dBFS`;
+                    document.getElementById('output-level-value').textContent =
+                        `RMS ${levels.output_rms_dbfs.toFixed(1).padStart(6)} | PK ${levels.output_peak_hold_dbfs.toFixed(1).padStart(6)} dBFS`;
+                    const warnings = [];
+                    if (levels.input_clipping) warnings.push('INPUT CLIP');
+                    if (levels.limiter_active) warnings.push('SOFT LIMIT');
+                    const warningElement = document.getElementById('level-warning');
+                    warningElement.textContent = warnings.join('  ·  ');
+                    warningElement.className = warnings.length ? 'level-value level-warning' : 'level-value';
+                });
+        }, 150);
         
         // Start button
         document.getElementById('start-btn').addEventListener('click', () => {
@@ -527,8 +720,10 @@ HTML_TEMPLATE = """
                     document.getElementById('start-btn').disabled = false;
                     document.getElementById('stop-btn').disabled = true;
                     document.getElementById('rec-start-btn').disabled = true;
+                    document.getElementById('rec-stop-btn').disabled = true;
                     document.getElementById('status').textContent = '● Stopped';
                     document.getElementById('status').className = 'status stopped';
+                    document.getElementById('rec-status').style.display = 'none';
                 });
         });
         
@@ -626,6 +821,10 @@ def set_preset():
             preset['asnr']
         )
         processor_state['post_gain'] = preset['post_gain']
+        processor_state['block_config'].schedule(
+            novasdr_nr=processor_state['novasdr_nr'],
+            post_gain=processor_state['post_gain'],
+        )
         log(f"Preset changed to {preset_name} ({processor_state['mode']} mode)")
     
     return jsonify({'success': True})
@@ -634,8 +833,27 @@ def set_preset():
 def set_bypass():
     data = request.json
     processor_state['bypass'] = data['bypass']
+    processor_state['block_config'].schedule(bypass=processor_state['bypass'])
     status = "BYPASSED" if data['bypass'] else "ACTIVE"
     log(f"Processing {status}")
+    return jsonify({'success': True})
+
+@app.route('/api/input-trim', methods=['POST'])
+def set_input_trim():
+    value = int(request.json['value'])
+    if not 1 <= value <= 100:
+        return jsonify({'success': False, 'error': 'Input trim must be between 1 and 100'})
+    processor_state['input_gain'] = input_trim_slider_to_gain(value)
+    processor_state['block_config'].schedule(input_gain=processor_state['input_gain'])
+    return jsonify({'success': True})
+
+@app.route('/api/output-volume', methods=['POST'])
+def set_output_volume():
+    value = int(request.json['value'])
+    if not 10 <= value <= 400:
+        return jsonify({'success': False, 'error': 'Output volume must be between 10 and 400'})
+    processor_state['output_volume'] = volume_slider_to_gain(value)
+    processor_state['block_config'].schedule(output_volume=processor_state['output_volume'])
     return jsonify({'success': True})
 
 @app.route('/api/mode', methods=['POST'])
@@ -663,6 +881,12 @@ def set_mode():
             preset['asnr']
         )
         processor_state['post_gain'] = preset['post_gain']
+    processor_state['block_config'].schedule(
+        bandpass_filter=processor_state['bandpass_filter'],
+        zi_bandpass=processor_state['zi_bandpass'],
+        novasdr_nr=processor_state['novasdr_nr'],
+        post_gain=processor_state['post_gain'],
+    )
     
     config = BANDPASS_CONFIG[mode]
     log(f"Mode changed to {mode} (BW: {config['low']}-{config['high']} Hz)")
@@ -675,6 +899,9 @@ def start_processing():
     try:
         processor_state['input_device'] = data['input']
         processor_state['output_device'] = data['output']
+        input_info = sd.query_devices(data['input'])
+        output_info = sd.query_devices(data['output'])
+        input_channels, output_channels = choose_stream_channels(input_info, output_info)
         processor_state['preset'] = data['preset']
         
         # Initialize bandpass filter based on current mode
@@ -692,12 +919,28 @@ def start_processing():
             )
             processor_state['post_gain'] = preset['post_gain']
             log(f"✓ NovaSDR initialized: {data['preset']} preset")
+
+        processor_state['block_config'].schedule(
+            bypass=processor_state['bypass'],
+            input_gain=processor_state['input_gain'],
+            output_volume=processor_state['output_volume'],
+            bandpass_filter=processor_state['bandpass_filter'],
+            zi_bandpass=processor_state['zi_bandpass'],
+            novasdr_nr=processor_state['novasdr_nr'],
+            post_gain=processor_state['post_gain'],
+        )
+        processor_state['meters'] = {
+            'input': AudioLevelMeter(),
+            'output': AudioLevelMeter(),
+            'input_clipping': False,
+            'limiter_active': False,
+        }
         
         processor_state['stream'] = sd.Stream(
             device=(data['input'], data['output']),
             samplerate=SAMPLE_RATE,
             blocksize=BLOCK_SIZE,
-            channels=2,
+            channels=(input_channels, output_channels),
             callback=audio_callback,
             latency='low'
         )
@@ -724,6 +967,8 @@ def stop_processing():
         processor_state['stream'] = None
     
     processor_state['running'] = False
+    if processor_state['recording']:
+        stop_recording()
     log("✓ Audio processing stopped")
     
     return jsonify({'success': True})
@@ -731,6 +976,20 @@ def stop_processing():
 @app.route('/api/logs')
 def get_logs():
     return jsonify({'logs': processor_state['logs']})
+
+@app.route('/api/levels')
+def get_levels():
+    meters = processor_state['meters']
+    input_rms, _, input_peak_hold = meters['input'].snapshot
+    output_rms, _, output_peak_hold = meters['output'].snapshot
+    return jsonify({
+        'input_rms_dbfs': input_rms,
+        'input_peak_hold_dbfs': input_peak_hold,
+        'output_rms_dbfs': output_rms,
+        'output_peak_hold_dbfs': output_peak_hold,
+        'input_clipping': meters['input_clipping'],
+        'limiter_active': meters['limiter_active'],
+    })
 
 @app.route('/api/recording/start', methods=['POST'])
 def start_recording():
@@ -740,9 +999,11 @@ def start_recording():
     if processor_state['recording']:
         return jsonify({'success': False, 'error': 'Already recording'})
     
-    # Start recording
+    recordings_dir = Path(__file__).parent / 'recordings'
+    recorder = AsyncMonoRecorder(recordings_dir, SAMPLE_RATE, MP3_AVAILABLE)
+    recorder.start()
+    processor_state['recorder'] = recorder
     processor_state['recording'] = True
-    processor_state['recording_data'] = []
     
     log(f"🔴 Recording started")
     return jsonify({'success': True})
@@ -753,63 +1014,27 @@ def stop_recording():
         return jsonify({'success': False, 'error': 'Not recording'})
     
     processor_state['recording'] = False
-    
-    # Create recordings directory
-    recordings_dir = Path(__file__).parent / 'recordings'
-    recordings_dir.mkdir(exist_ok=True)
-    
-    # Generate filename with date/time
-    now = datetime.now()
-    
-    # Concatenate all recorded chunks
-    if processor_state['recording_data']:
-        audio_data = np.concatenate(processor_state['recording_data'])
-        duration = len(audio_data) / SAMPLE_RATE
-        
-        # Convert to int16
-        audio_int16 = (audio_data * 32767).astype(np.int16)
-        
-        if MP3_AVAILABLE:
-            # Save as MP3 (compressed)
-            filename = f"recording_{now.strftime('%Y%m%d_%H%M%S')}.mp3"
-            filepath = recordings_dir / filename
-            
-            # Create temporary WAV in memory
-            temp_wav = recordings_dir / f"temp_{now.strftime('%Y%m%d_%H%M%S')}.wav"
-            with wave.open(str(temp_wav), 'wb') as wf:
-                wf.setnchannels(1)
-                wf.setsampwidth(2)
-                wf.setframerate(SAMPLE_RATE)
-                wf.writeframes(audio_int16.tobytes())
-            
-            # Convert to MP3
-            audio = AudioSegment.from_wav(str(temp_wav))
-            audio.export(str(filepath), format='mp3', bitrate='128k')
-            
-            # Remove temp WAV
-            temp_wav.unlink()
-            
-            log(f"⏹️ Recording stopped - Saved: {filename} ({duration:.1f}s, MP3 128kbps)")
-        else:
-            # Fallback to WAV if pydub not available
-            filename = f"recording_{now.strftime('%Y%m%d_%H%M%S')}.wav"
-            filepath = recordings_dir / filename
-            
-            with wave.open(str(filepath), 'wb') as wf:
-                wf.setnchannels(1)
-                wf.setsampwidth(2)
-                wf.setframerate(SAMPLE_RATE)
-                wf.writeframes(audio_int16.tobytes())
-            
-            log(f"⏹️ Recording stopped - Saved: {filename} ({duration:.1f}s, WAV)")
-        
-        # Clear recording data
-        processor_state['recording_data'] = []
-        
-        return jsonify({'success': True, 'filename': filename, 'duration': duration})
-    else:
+    recorder = processor_state['recorder']
+    processor_state['recorder'] = None
+    if recorder is None:
         log("⏹️ Recording stopped - No data recorded")
         return jsonify({'success': False, 'error': 'No data recorded'})
+    try:
+        filepath, duration, dropped_chunks, conversion_error = recorder.stop()
+    except Exception as error:
+        log(f"ERROR saving recording: {error}")
+        return jsonify({'success': False, 'error': str(error)})
+    if not duration:
+        log("⏹️ Recording stopped - No data recorded")
+        return jsonify({'success': False, 'error': 'No data recorded'})
+
+    filename = filepath.name
+    log(f"⏹️ Recording stopped - Saved: {filename} ({duration:.1f}s)")
+    if dropped_chunks:
+        log(f"WARNING: Recording dropped {dropped_chunks} audio blocks")
+    if conversion_error:
+        log(f"WARNING: MP3 conversion failed; WAV retained: {conversion_error}")
+    return jsonify({'success': True, 'filename': filename, 'duration': duration})
 
 @app.route('/api/recording/status')
 def recording_status():
