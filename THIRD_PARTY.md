@@ -15,7 +15,6 @@ This document identifies the external source code and direct dependencies used b
 - **NumPy** — audio buffers and numerical operations (`audio_processor/requirements.txt`).
 - **SciPy** — Butterworth band-pass filter design and streaming filtering (`audio_processor/requirements.txt`).
 - **PyQt5** — native desktop interface, used under the GNU GPL v3; bundled in packaged builds.
-- **Flask** — local browser interface; installed by `audio_processor/run_web.sh`.
 - **pydub** — optional MP3 export; WAV recording remains available without it.
 - **spectral_nr** — this repository's Rust extension, imported by both audio frontends when available.
 

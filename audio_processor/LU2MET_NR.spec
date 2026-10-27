@@ -35,7 +35,7 @@ a = Analysis(
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports + ['_sounddevice', 'scipy.signal', 'pydub', 'certifi'],
-    excludes=['pytest', 'tkinter', 'flask', 'scipy.tests', 'numpy.tests', 'PyQt5.tests'],
+    excludes=['pytest', 'tkinter', 'scipy.tests', 'numpy.tests', 'PyQt5.tests'],
     noarchive=False,
 )
 pyz = PYZ(a.pure)

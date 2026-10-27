@@ -23,6 +23,7 @@ from audio_pipeline import (
     AsyncMonoRecorder,
     AudioLevelMeter,
     BlockConfig,
+    TxGate,
     apply_master_output,
     choose_stream_channels,
     input_is_clipped,
@@ -101,9 +102,9 @@ def level_bar_style(color):
     )
 
 
-def led_style(active):
+def led_style(active, color=LEVEL_COLOR_CLIP):
     if active:
-        return ('background: #dc2626; color: white; font-weight: bold; '
+        return (f'background: {color}; color: white; font-weight: bold; '
                 'font-size: 10px; border-radius: 3px; padding: 1px;')
     return ('background: #e5e7eb; color: #9ca3af; font-size: 10px; '
             'border-radius: 3px; padding: 1px;')
@@ -137,6 +138,8 @@ class AudioProcessor(QThread):
         super().__init__()
         self.running = False
         self.bypass = False
+        self.tx_mute = True
+        self.tx_gate = TxGate(SAMPLE_RATE)
         self.recording = False
         self.mode = 'SSB'
         self.preset = 'extreme'
@@ -155,6 +158,7 @@ class AudioProcessor(QThread):
         self.zi_bandpass = None
         self.block_config = BlockConfig({
             'bypass': False,
+            'tx_mute': True,
             'input_gain': self.input_gain,
             'output_volume': self.output_volume,
             'bandpass_filter': None,
@@ -195,6 +199,14 @@ class AudioProcessor(QThread):
         self.input_clipping_seen = self.input_clipping_seen or input_is_clipped(indata)
         audio_data = to_mono(indata)
 
+        if config['tx_mute']:
+            # During TX: mute, and keep the noise estimate from adapting to silence.
+            freeze_nr, tx_envelope = self.tx_gate.update(audio_data)
+        else:
+            if self.tx_gate.reference_db is not None:
+                self.tx_gate.reset()
+            freeze_nr, tx_envelope = False, None
+
         if config['bypass'] or not NR_AVAILABLE or config['nr'] is None:
             # Bypass disables processing but retains the master output stage.
             filtered_audio = audio_data
@@ -205,15 +217,18 @@ class AudioProcessor(QThread):
             audio_data = audio_data * config['input_gain']
 
             try:
-                if config['bandpass_filter'] is not None:
+                if freeze_nr:
+                    filtered_audio = np.zeros_like(audio_data)
+                elif config['bandpass_filter'] is not None:
                     filtered_audio, config['zi_bandpass'] = signal.sosfilt(
                         config['bandpass_filter'], audio_data, zi=config['zi_bandpass']
                     )
                 else:
                     filtered_audio = audio_data
 
-                filtered_audio = config['nr'].process(filtered_audio.astype(np.float32))
-                filtered_audio = filtered_audio * config['post_gain']
+                if not freeze_nr:
+                    filtered_audio = config['nr'].process(filtered_audio.astype(np.float32))
+                    filtered_audio = filtered_audio * config['post_gain']
 
                 if self.callback_count == 1:
                     logging.info(f"Audio callback: PROCESSING mode (input level: {np.abs(audio_data).max():.4f}, output level: {np.abs(filtered_audio).max():.4f})")
@@ -225,6 +240,8 @@ class AudioProcessor(QThread):
         filtered_audio, limiter_active = apply_master_output(
             filtered_audio, config['output_volume']
         )
+        if tx_envelope is not None:
+            filtered_audio = filtered_audio * tx_envelope
         self.limiter_active_seen = self.limiter_active_seen or limiter_active
         self.output_meter.update(filtered_audio, SAMPLE_RATE)
 
@@ -328,6 +345,7 @@ class AudioProcessor(QThread):
         self.log_signal.emit("✓ Audio processing stopped")
 
     def reset_meters(self):
+        self.tx_gate.reset()
         self.input_meter.reset()
         self.output_meter.reset()
         self.input_clipping_seen = False
@@ -655,9 +673,26 @@ class LU2METNRWindow(QMainWindow):
         volume_info.setStyleSheet('color: #3b82f6; font-size: 10px; padding: 2px;')
         control_layout.addWidget(volume_info)
         
+        switches_row = QHBoxLayout()
         self.bypass_check = QCheckBox('Bypass (pass-through)')
         self.bypass_check.stateChanged.connect(self.on_bypass_change)
-        control_layout.addWidget(self.bypass_check)
+        switches_row.addWidget(self.bypass_check)
+        self.tx_mute_check = QCheckBox('Mute during TX')
+        self.tx_mute_check.setToolTip(
+            'Mute the output while the receiver audio drops during transmit, '
+            'and fade it back in afterwards'
+        )
+        self.tx_mute_check.setChecked(True)
+        self.tx_mute_check.stateChanged.connect(self.on_tx_mute_change)
+        switches_row.addWidget(self.tx_mute_check)
+        switches_row.addStretch(1)
+        self.tx_led = QLabel('TX')
+        self.tx_led.setAlignment(Qt.AlignCenter)
+        self.tx_led.setFixedWidth(48)
+        self.tx_led.setToolTip('Lit while the output is muted for transmit')
+        self.tx_led.setStyleSheet(led_style(False))
+        switches_row.addWidget(self.tx_led)
+        control_layout.addLayout(switches_row)
 
         for label, bar_name, value_name, led_name, led_text in (
             ('IN', 'input_level_bar', 'input_level_value', 'input_clip_led', 'CLIP'),
@@ -665,7 +700,7 @@ class LU2METNRWindow(QMainWindow):
         ):
             level_row = QHBoxLayout()
             name_label = QLabel(label)
-            name_label.setFixedWidth(32)
+            name_label.setFixedWidth(40)
             level_row.addWidget(name_label)
             level_bar = QProgressBar()
             level_bar.setRange(0, 60)
@@ -836,7 +871,14 @@ class LU2METNRWindow(QMainWindow):
         self.output_level_bar.setStyleSheet(level_bar_style(level_color(output_hold)))
         self.input_clip_led.setStyleSheet(led_style(self.processor.input_clipping_seen))
         self.output_limit_led.setStyleSheet(led_style(self.processor.limiter_active_seen))
+        tx_active = self.processor.running and self.processor.tx_mute and self.processor.tx_gate.muted
+        self.tx_led.setStyleSheet(led_style(tx_active, LEVEL_COLOR_HOT))
     
+    def on_tx_mute_change(self, state):
+        self.processor.tx_mute = (state == Qt.Checked)
+        self.processor.block_config.schedule(tx_mute=self.processor.tx_mute)
+        self.add_log(f"Mute during TX: {'on' if self.processor.tx_mute else 'off'}")
+
     def on_bypass_change(self, state):
         self.processor.bypass = (state == Qt.Checked)
         self.processor.block_config.schedule(bypass=self.processor.bypass)
@@ -947,6 +989,7 @@ class LU2METNRWindow(QMainWindow):
             # Load bypass state
             bypass = self.settings.value('audio/bypass', False, type=bool)
             self.bypass_check.setChecked(bypass)
+            self.tx_mute_check.setChecked(self.settings.value('audio/tx_mute', True, type=bool))
             
             # Load input/output devices (by name)
             input_device = self.settings.value('audio/input_device', '')
@@ -992,6 +1035,7 @@ class LU2METNRWindow(QMainWindow):
             
             # Save bypass state
             self.settings.setValue('audio/bypass', self.bypass_check.isChecked())
+            self.settings.setValue('audio/tx_mute', self.tx_mute_check.isChecked())
             
             # Sync to disk
             self.settings.sync()

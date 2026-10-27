@@ -14,12 +14,11 @@ The configured callback block is 2048 frames, about 42.7 ms at 48 kHz. End-to-en
 
 ## Main Components
 
-- `audio_processor/lu2met_nr_gui.py` — native desktop interface.
-- `audio_processor/audio_processor_web.py` — Flask browser interface.
+- `audio_processor/lu2met_nr_gui.py` — desktop interface and audio callback.
 - `audio_processor/audio_pipeline.py` — shared mono conversion, gain mapping, meters, and asynchronous recording.
 - `spectral_nr/` — PyO3 extension wrapping the Rust spectral filter.
 
-Both interfaces share the same DSP pipeline. Their launch commands and current controls are documented in [audio_processor/USAGE.md](audio_processor/USAGE.md).
+Launch commands and controls are documented in [audio_processor/USAGE.md](audio_processor/USAGE.md).
 
 ## DSP Attribution
 

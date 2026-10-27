@@ -9,6 +9,7 @@ from audio_pipeline import (
     AsyncMonoRecorder,
     AudioLevelMeter,
     BlockConfig,
+    TxGate,
     apply_master_output,
     choose_stream_channels,
     input_is_clipped,
@@ -166,3 +167,58 @@ class AudioPipelineTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+class TxGateTests(unittest.TestCase):
+    SR = 48000
+    BLOCK = 2048
+
+    def blocks(self, count, level_db, seed=0):
+        rng = np.random.default_rng(seed)
+        scale = 10 ** (level_db / 20)
+        return [rng.normal(0, scale, self.BLOCK).astype(np.float32) for _ in range(count)]
+
+    def run_gate(self, gate, blocks):
+        return [gate.update(block) for block in blocks]
+
+    def test_tx_mutes_freezes_and_fades_back_in(self):
+        gate = TxGate(self.SR)
+        rx = self.run_gate(gate, self.blocks(60, -30))
+        self.assertFalse(any(freeze for freeze, _ in rx))
+        self.assertTrue(all(np.all(env == 1.0) for _, env in rx[5:]))
+
+        tx = self.run_gate(gate, self.blocks(20, -75, seed=1))
+        self.assertTrue(all(freeze for freeze, _ in tx), 'NR must be frozen from the first TX block')
+        self.assertEqual(float(tx[0][1][-1]), 0.0, 'output muted by the end of the first TX block')
+        self.assertTrue(gate.muted)
+
+        back = self.run_gate(gate, self.blocks(30, -30, seed=2))
+        self.assertFalse(any(freeze for freeze, _ in back), 'NR runs again as soon as RX returns')
+        gains = np.concatenate([env for _, env in back])
+        block_seconds = self.BLOCK / self.SR
+        hold_blocks = int(np.ceil(0.15 / block_seconds))
+        self.assertEqual(float(gains[: hold_blocks * self.BLOCK].max()), 0.0, 'muted during hold-off')
+        self.assertTrue(np.all(np.diff(gains) >= 0), 'gain only rises after TX')
+        fade_end = int((0.15 + 0.4) * self.SR) + 2 * self.BLOCK
+        self.assertEqual(float(gains[fade_end:].min()), 1.0, 'fully faded in after hold + fade')
+        self.assertFalse(gate.muted)
+
+    def test_gradual_fading_does_not_trigger(self):
+        gate = TxGate(self.SR)
+        self.run_gate(gate, self.blocks(60, -30))
+        fading = [b * np.float32(10 ** (-20 * i / 60 / 20)) for i, b in enumerate(self.blocks(60, -30, seed=3))]
+        results = self.run_gate(gate, fading)
+        self.assertFalse(any(freeze for freeze, _ in results))
+        self.assertFalse(gate.muted)
+
+    def test_long_silence_is_accepted_as_new_level(self):
+        gate = TxGate(self.SR, max_tx_seconds=2.0)
+        self.run_gate(gate, self.blocks(60, -30))
+        results = self.run_gate(gate, self.blocks(120, -75, seed=4))
+        self.assertTrue(results[0][0])
+        self.assertFalse(results[-1][0], 'unmutes after max_tx_seconds')
+        self.assertEqual(float(results[-1][1][-1]), 1.0)
+
+    def test_silent_input_never_mutes(self):
+        gate = TxGate(self.SR)
+        results = self.run_gate(gate, [np.zeros(self.BLOCK, dtype=np.float32)] * 30)
+        self.assertFalse(any(freeze for freeze, _ in results))
