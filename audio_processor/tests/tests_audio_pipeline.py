@@ -11,7 +11,10 @@ from audio_pipeline import (
     BlockConfig,
     TxGate,
     apply_master_output,
+    check_same_host_api,
     choose_stream_channels,
+    device_choices,
+    find_device_label,
     input_is_clipped,
     input_trim_slider_to_gain,
     peak_dbfs,
@@ -165,9 +168,6 @@ class AudioPipelineTests(unittest.TestCase):
                 self.assertEqual(audio_file.getnframes(), 2)
 
 
-if __name__ == '__main__':
-    unittest.main()
-
 class TxGateTests(unittest.TestCase):
     SR = 48000
     BLOCK = 2048
@@ -222,3 +222,57 @@ class TxGateTests(unittest.TestCase):
         gate = TxGate(self.SR)
         results = self.run_gate(gate, [np.zeros(self.BLOCK, dtype=np.float32)] * 30)
         self.assertFalse(any(freeze for freeze, _ in results))
+
+
+class DeviceChoiceTests(unittest.TestCase):
+    HOSTAPIS = [
+        {'name': 'MME'},
+        {'name': 'Windows DirectSound'},
+        {'name': 'Windows WASAPI'},
+        {'name': 'Windows WDM-KS'},
+    ]
+
+    @staticmethod
+    def device(name, hostapi, inputs=2, outputs=0):
+        return {'name': name, 'hostapi': hostapi, 'max_input_channels': inputs, 'max_output_channels': outputs}
+
+    def windows_devices(self):
+        return [
+            self.device('CABLE Output (VB-Audio Virtual ', 0),
+            self.device('Speakers (Realtek)', 0, inputs=0, outputs=2),
+            self.device('CABLE Output (VB-Audio Virtual Cable)', 1),
+            self.device('CABLE Output (VB-Audio Virtual Cable)', 2),
+            self.device('Speakers (Realtek)', 2, inputs=0, outputs=2),
+            self.device('CABLE Output', 3),
+        ]
+
+    def test_windows_lists_wasapi_then_mme_with_tags(self):
+        choices = device_choices(self.windows_devices(), self.HOSTAPIS, 'input', platform='win32')
+        self.assertEqual(choices, [
+            (3, 'CABLE Output (VB-Audio Virtual Cable) [WASAPI]'),
+            (0, 'CABLE Output (VB-Audio Virtual  [MME]'),
+        ])
+        outputs = device_choices(self.windows_devices(), self.HOSTAPIS, 'output', platform='win32')
+        self.assertEqual([idx for idx, _ in outputs], [4, 1])
+
+    def test_macos_labels_are_plain_names(self):
+        devices = [self.device('BlackHole 2ch', 0), self.device('MacBook Pro Speakers', 0, inputs=0, outputs=2)]
+        choices = device_choices(devices, [{'name': 'Core Audio'}], 'input', platform='darwin')
+        self.assertEqual(choices, [(0, 'BlackHole 2ch')])
+
+    def test_finds_labels_saved_by_older_versions(self):
+        labels = ['CABLE Output (VB-Audio Virtual Cable) [WASAPI]', 'CABLE Output (VB-Audio Virtual  [MME]']
+        self.assertEqual(find_device_label(labels, labels[0]), 0)
+        self.assertEqual(find_device_label(labels, '12: CABLE Output (VB-Audio Virtual '), 1)
+        self.assertEqual(find_device_label(['BlackHole 2ch'], '3: BlackHole 2ch'), 0)
+        self.assertEqual(find_device_label(labels, '5: Missing device'), -1)
+
+    def test_rejects_mixed_host_apis(self):
+        devices = self.windows_devices()
+        check_same_host_api(devices[3], devices[4], self.HOSTAPIS)
+        with self.assertRaisesRegex(ValueError, 'MME.*WASAPI'):
+            check_same_host_api(devices[0], devices[4], self.HOSTAPIS)
+
+
+if __name__ == '__main__':
+    unittest.main()

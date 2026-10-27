@@ -46,23 +46,23 @@ VB-CABLE creates two endpoints, and the names are counterintuitive:
    Do the same for the headphones or speakers if possible.
 5. Also in the Recording tab, CABLE Output → Properties → **Listen**: leave **Listen to this device** unchecked, otherwise the unfiltered audio plays under the filtered audio.
 6. Allow microphone access for desktop apps: **Settings → Privacy & security → Microphone** → enable **Microphone access** and **Let desktop apps access your microphone**. Without this, every input, including the cable, delivers silence.
-7. In the processor: Input **CABLE Output**, Output **your headphones or speakers**. Press Start and check that the IN meter moves.
+7. In the processor: Input **CABLE Output [WASAPI]**, Output **your headphones or speakers [WASAPI]**. Press Start and check that the IN meter moves.
 
-### Duplicate device entries
+### Device tags: [WASAPI] and [MME]
 
-Windows exposes each device once per audio system (MME, DirectSound, WASAPI, WDM-KS), so the device lists show the same name several times with different numbers. The first group (lowest numbers) is MME, and MME names are cut to 31 characters, for example `CABLE Output (VB-Audio Virtual` with the rest cut off.
+Windows exposes each device once per audio system. The device lists show two of them, tagged after the name, with WASAPI first:
 
-- Choose the input and output from the **same group**. Mixing an MME input with a WASAPI output fails to start.
-- **MME** (lowest numbers) is the most forgiving: Windows converts sample rates, and the latency is acceptable for listening.
-- **WASAPI** has lower latency, but both devices must already be set to 48000 Hz (step 4), otherwise the stream fails with an invalid sample rate error.
-- If Start fails, the error appears in the log panel. Try the matching entries from the MME group first.
+- **[WASAPI]**: full device names and lower latency. The application lets Windows convert the sample rate, so it also works with devices that are not set to 48 kHz. Use these entries by default.
+- **[MME]**: the older system. Names are cut to 31 characters, for example `CABLE Output (VB-Audio Virtual`. Use it if a WASAPI entry fails to start.
+
+Choose the input and output with the **same tag**. If the tags differ, Start shows an error instead of opening the stream. A device saved by an earlier version, which showed numbered entries without tags, is selected again automatically.
 
 ### Windows troubleshooting
 
 - **IN meter does not move:** check microphone privacy (step 6), that the receiver is actually routed to CABLE Input (step 3), and that its volume is not muted.
 - **No sound from the PC after installing VB-CABLE:** the default output was changed to CABLE Input (step 2).
 - **Echo or unfiltered audio mixed in:** "Listen to this device" is enabled on CABLE Output, or the receiver is also playing to the speakers.
-- **Crackles or dropouts:** use MME or WASAPI entries, both at 48000 Hz, and close other audio programs that hold the device in exclusive mode.
+- **Crackles or dropouts:** set the devices to 48000 Hz (step 4), try the [MME] entries, and close other audio programs that hold the device in exclusive mode.
 
 ## Controls
 

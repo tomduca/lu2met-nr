@@ -25,7 +25,10 @@ from audio_pipeline import (
     BlockConfig,
     TxGate,
     apply_master_output,
+    check_same_host_api,
     choose_stream_channels,
+    device_choices,
+    find_device_label,
     input_is_clipped,
     input_trim_slider_to_gain,
     recordings_dir,
@@ -293,6 +296,14 @@ class AudioProcessor(QThread):
             output_info = sd.query_devices(output_dev)
             
             input_channels, output_channels = choose_stream_channels(input_info, output_info)
+            hostapis = sd.query_hostapis()
+            check_same_host_api(input_info, output_info, hostapis)
+            extra_settings = None
+            if hostapis[input_info['hostapi']]['name'] == 'Windows WASAPI':
+                # Shared-mode WASAPI fails unless the device is already at 48 kHz;
+                # let Windows convert instead.
+                wasapi = sd.WasapiSettings(auto_convert=True)
+                extra_settings = (wasapi, wasapi)
             
             logging.info(f"Input device: {input_channels} channels, Output device: {output_channels} channels")
             print(f"Input device: {input_channels} channels, Output device: {output_channels} channels")
@@ -303,7 +314,8 @@ class AudioProcessor(QThread):
                 blocksize=BLOCK_SIZE,
                 channels=(input_channels, output_channels),
                 callback=self.audio_callback,
-                latency='low'
+                latency='low',
+                extra_settings=extra_settings,
             )
         except Exception as e:
             logging.error(f"ERROR: Failed to open audio stream: {e}", exc_info=True)
@@ -808,15 +820,20 @@ class LU2METNRWindow(QMainWindow):
     
     def load_devices(self):
         devices = sd.query_devices()
+        hostapis = sd.query_hostapis()
         
-        for idx, device in enumerate(devices):
-            if device['max_input_channels'] > 0:
-                self.input_combo.addItem(f"{idx}: {device['name']}", idx)
-                if 'BlackHole' in device['name'] or 'Loopback' in device['name']:
-                    self.input_combo.setCurrentIndex(self.input_combo.count() - 1)
-            
-            if device['max_output_channels'] > 0:
-                self.output_combo.addItem(f"{idx}: {device['name']}", idx)
+        virtual_input = None
+        for idx, label in device_choices(devices, hostapis, 'input'):
+            self.input_combo.addItem(label, idx)
+            if virtual_input is None and any(
+                name in label for name in ('BlackHole', 'Loopback', 'CABLE Output')
+            ):
+                virtual_input = self.input_combo.count() - 1
+        if virtual_input is not None:
+            self.input_combo.setCurrentIndex(virtual_input)
+        
+        for idx, label in device_choices(devices, hostapis, 'output'):
+            self.output_combo.addItem(label, idx)
         
         self.add_log(f"Loaded {self.input_combo.count()} input and {self.output_combo.count()} output devices")
     
@@ -995,15 +1012,12 @@ class LU2METNRWindow(QMainWindow):
             input_device = self.settings.value('audio/input_device', '')
             output_device = self.settings.value('audio/output_device', '')
             
-            if input_device:
-                index = self.input_combo.findText(input_device)
-                if index >= 0:
-                    self.input_combo.setCurrentIndex(index)
-            
-            if output_device:
-                index = self.output_combo.findText(output_device)
-                if index >= 0:
-                    self.output_combo.setCurrentIndex(index)
+            for combo, saved in ((self.input_combo, input_device), (self.output_combo, output_device)):
+                if saved:
+                    labels = [combo.itemText(i) for i in range(combo.count())]
+                    index = find_device_label(labels, saved)
+                    if index >= 0:
+                        combo.setCurrentIndex(index)
             
             self.add_log('✓ Settings loaded')
         except Exception as e:
