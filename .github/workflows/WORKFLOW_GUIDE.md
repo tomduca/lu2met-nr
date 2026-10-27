@@ -5,6 +5,7 @@
 - Pull requests to `main` and pushes to `main`: build, test, and upload the zips as run artifacts (30 days).
 - Tags `v*`: additionally publish a GitHub Release; tags containing `-` are pre-releases.
 - Manual runs: **Actions → Build apps → Run workflow**.
+- Pull requests and pushes that only change Markdown files or `docs/` skip the build. Tags always build.
 
 The workflow declares the permissions it needs; no repository settings changes are required.
 
