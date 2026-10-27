@@ -1,24 +1,16 @@
 # LU2MET NR Filter
 
-A local, live HF audio processor with a native PyQt5 interface and an optional Flask browser interface. Audio capture and playback use `sounddevice`; spectral noise reduction is provided by a Rust extension.
+A local, live HF audio processor with a native PyQt5 desktop interface, distributed as packaged apps for macOS and Windows. Audio capture and playback use `sounddevice`; spectral noise reduction is provided by a Rust extension.
 
 ## Run
 
-From the repository root, start the native application:
+Download the app for your platform from [Releases](https://github.com/tomduca/lu2met-nr/releases), or run it from source at the repository root:
 
 ```bash
 ./audio_processor/run_qt_gui.sh
 ```
 
-To use the browser interface instead:
-
-```bash
-./audio_processor/run_web.sh
-```
-
-The web interface is served locally on port `5001`.
-
-See [INSTALL.md](INSTALL.md) for development setup, [BUILD.md](BUILD.md) for platform packaging instructions, and [GUI_OPTIONS.md](GUI_OPTIONS.md) for the interface overview.
+See [INSTALL.md](INSTALL.md) for development setup, [BUILD.md](BUILD.md) for platform packaging instructions, and [audio_processor/USAGE.md](audio_processor/USAGE.md) for using the application.
 
 ## Audio Path
 
@@ -34,8 +26,7 @@ The configured block size is 2048 frames at 48 kHz (about 42.7 ms per block). Ac
 
 ## Repository Layout
 
-- `audio_processor/lu2met_nr_gui.py` — native PyQt5 interface and audio callback.
-- `audio_processor/audio_processor_web.py` — local Flask interface and audio callback.
+- `audio_processor/lu2met_nr_gui.py` — PyQt5 interface and audio callback.
 - `audio_processor/audio_pipeline.py` — shared channel, gain, meter, and recording helpers.
 - `spectral_nr/` — PyO3 Rust extension with the spectral noise-reduction implementation.
 

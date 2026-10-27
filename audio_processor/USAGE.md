@@ -2,19 +2,11 @@
 
 ## Start
 
-From `audio_processor/`, run the native desktop interface:
+Open the app downloaded from [Releases](https://github.com/tomduca/lu2met-nr/releases) (see [BUILD.md](../BUILD.md#first-launch) for the first launch), or run it from source in `audio_processor/`:
 
 ```bash
 ./run_qt_gui.sh
 ```
-
-To use the browser interface:
-
-```bash
-./run_web.sh
-```
-
-The browser interface is served locally at `http://localhost:5001`.
 
 ## Audio Routing
 
@@ -40,7 +32,7 @@ While the radio transmits, its receive audio line goes almost silent. Without mu
 
 With **Mute during TX** enabled, the application follows the normal receive level and treats a sudden drop of more than 25 dB as transmit. During transmit it mutes the output and stops feeding the filter, so the filter keeps the noise profile it had before transmitting. When the receive level returns, the output stays muted for 150 ms (relay click and receiver AGC recovery) and then fades in over 400 ms.
 
-Detection is relative to the receive level, so it does not depend on the radio volume. Gradual fading (QSB) does not trigger it. If the level stays low for more than three minutes, the application assumes the receiver volume was turned down, accepts the new level, and unmutes. The browser interface applies the same muting and shows **TX MUTE** while active.
+Detection is relative to the receive level, so it does not depend on the radio volume. Gradual fading (QSB) does not trigger it. If the level stays low for more than three minutes, the application assumes the receiver volume was turned down, accepts the new level, and unmutes.
 
 The meters show recent RMS and a peak value that holds briefly and then decays. The bar turns amber when the peak passes -6 dBFS and red above -1 dBFS. The **CLIP** indicator next to IN turns red when input clipping is detected; lower the radio/interface output before capture. The **LIMIT** indicator next to OUT turns red when the output soft limiter has engaged. Both indicators stay latched until the stream is stopped and started again.
 
