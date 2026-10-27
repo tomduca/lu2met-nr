@@ -90,13 +90,20 @@ jobs:
     permissions:
       contents: write
     steps:
+      # The artifacts are the app zips themselves; without skip-decompress
+      # they are extracted and no zip is left to attach to the release.
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
+          skip-decompress: true
+
+      - name: List release files
+        run: ls -la artifacts
 
       - uses: softprops/action-gh-release@v2
         with:
           files: artifacts/*.zip
+          fail_on_unmatched_files: true
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-') }}
