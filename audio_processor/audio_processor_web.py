@@ -551,7 +551,7 @@ HTML_TEMPLATE = """
             <div style="text-align: center; padding: 20px; color: white; font-size: 12px; opacity: 0.8;">
                 <p>LU2MET NR Filter</p>
                 <p style="margin-top: 10px;">
-                    <a href="https://github.com/tomduca/novasdr-audio-processor" target="_blank" style="color: #86efac; text-decoration: none;">
+                    <a href="https://github.com/tomduca/lu2met-nr" target="_blank" style="color: #86efac; text-decoration: none;">
                         📻 Project source on GitHub
                     </a>
                 </p>

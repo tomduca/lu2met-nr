@@ -31,4 +31,4 @@ Versions are declared in [`spectral_nr/Cargo.toml`](spectral_nr/Cargo.toml). The
 
 ## Project Source
 
-- [LU2MET NR Filter repository](https://github.com/tomduca/novasdr-audio-processor)
+- [LU2MET NR Filter repository](https://github.com/tomduca/lu2met-nr)

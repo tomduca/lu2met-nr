@@ -698,7 +698,7 @@ class LU2METNRWindow(QMainWindow):
         
         # Footer with repository link (smaller)
         footer = QLabel('Project source: '
-                   '<a href="https://github.com/tomduca/novasdr-audio-processor" style="color: #3b82f6; text-decoration: none;">LU2MET NR Filter on GitHub</a>')
+                   '<a href="https://github.com/tomduca/lu2met-nr" style="color: #3b82f6; text-decoration: none;">LU2MET NR Filter on GitHub</a>')
         footer.setOpenExternalLinks(True)
         footer.setAlignment(Qt.AlignCenter)
         footer.setStyleSheet('color: #6b7280; font-size: 9px; padding: 2px;')
