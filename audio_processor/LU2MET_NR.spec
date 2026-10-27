@@ -20,6 +20,7 @@ datas += copy_metadata('numpy') + copy_metadata('scipy')
 # License and attribution notices shipped with every build (GPL-3.0 requirement).
 datas += [
     ('../LICENSE', 'licenses'),
+    ('../NOTICE', 'licenses'),
     ('../THIRD_PARTY.md', 'licenses'),
     ('../third_party/novasdr-wasm', 'licenses/novasdr-wasm'),
 ]

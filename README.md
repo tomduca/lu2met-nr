@@ -44,4 +44,6 @@ The spectral noise-reduction implementation in [`spectral_nr/src/spectralnoisere
 
 ## License
 
-See [`LICENSE`](LICENSE) and the referenced upstream notices for license terms.
+Copyright (c) 2024-2026 Tomás Duca (LU2MET).
+
+Licensed under the GNU General Public License v3.0 only (GPL-3.0-only); see [`LICENSE`](LICENSE) for the full text and [`NOTICE`](NOTICE) for copyright and attribution. GPL-3.0 applies because the spectral filter is adapted from GPL-3.0-only code and the application bundles PyQt5 under the GPL.

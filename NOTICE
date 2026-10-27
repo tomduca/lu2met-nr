@@ -1,0 +1,25 @@
+LU2MET NR Filter
+Copyright (c) 2024-2026 Tomás Duca (LU2MET)
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the
+Free Software Foundation, version 3 only (GPL-3.0-only).
+
+This program is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General
+Public License in the LICENSE file for more details.
+
+---
+
+Third-party source
+
+The spectral noise-reduction implementation in
+spectral_nr/src/spectralnoisereduction.rs is adapted from
+src/spectralnoisereduction.rs in https://github.com/Steven9101/novasdr-wasm,
+which is distributed under GPL-3.0-only. Its license texts and NOTICE are
+kept in third_party/novasdr-wasm/.
+
+The packaged application bundles PyQt5, used under the GNU General Public
+License v3, and other libraries listed in THIRD_PARTY.md under their own
+licenses.

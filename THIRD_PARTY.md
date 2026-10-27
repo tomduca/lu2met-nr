@@ -5,7 +5,7 @@ This document identifies the external source code and direct dependencies used b
 ## Adapted DSP Source
 
 - **Spectral noise reduction algorithm:** adapted in [`spectral_nr/src/spectralnoisereduction.rs`](spectral_nr/src/spectralnoisereduction.rs) from [Steven9101/novasdr-wasm `src/spectralnoisereduction.rs`](https://github.com/Steven9101/novasdr-wasm/blob/main/src/spectralnoisereduction.rs).
-- The upstream repository includes GPL-3.0, Apache-2.0, and MIT license texts. Copies of those texts and the upstream `NOTICE` are kept in [`third_party/novasdr-wasm/`](third_party/novasdr-wasm/) and are included in packaged builds under `licenses/`. The upstream `NOTICE` states that the repository as a whole is distributed under GPL-3.0-only. The project license and applicable upstream terms are described in [`LICENSE`](LICENSE).
+- The upstream repository includes GPL-3.0, Apache-2.0, and MIT license texts. Copies of those texts and the upstream `NOTICE` are kept in [`third_party/novasdr-wasm/`](third_party/novasdr-wasm/) and are included in packaged builds under `licenses/`. The upstream `NOTICE` states that the repository as a whole is distributed under GPL-3.0-only. This project is distributed under GPL-3.0-only; see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
 
 ## Direct Runtime Dependencies
 
@@ -14,7 +14,7 @@ This document identifies the external source code and direct dependencies used b
 - **sounddevice** — audio device enumeration and PortAudio streams (`audio_processor/requirements.txt`).
 - **NumPy** — audio buffers and numerical operations (`audio_processor/requirements.txt`).
 - **SciPy** — Butterworth band-pass filter design and streaming filtering (`audio_processor/requirements.txt`).
-- **PyQt5** — native desktop interface; installed by the setup/build instructions.
+- **PyQt5** — native desktop interface, used under the GNU GPL v3; bundled in packaged builds.
 - **Flask** — local browser interface; installed by `audio_processor/run_web.sh`.
 - **pydub** — optional MP3 export; WAV recording remains available without it.
 - **spectral_nr** — this repository's Rust extension, imported by both audio frontends when available.
