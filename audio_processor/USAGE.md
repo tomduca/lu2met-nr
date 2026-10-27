@@ -17,6 +17,53 @@ Open the app downloaded from [Releases](https://github.com/tomduca/lu2met-nr/rel
 
 On macOS, a virtual device such as BlackHole may be used to route receiver audio into the processor. Configure system audio routing in Audio MIDI Setup as required by the receiver and capture setup.
 
+## Windows Setup
+
+### When a virtual cable is needed
+
+- **Radio through a USB audio interface:** no virtual cable. Input is the interface (for example `Microphone (USB Audio CODEC)`), output is your headphones or speakers.
+- **Receiver running on the PC** (WebSDR in a browser, SDR software): install [VB-CABLE](https://vb-audio.com/Cable/) so the receiver's audio can reach the processor.
+- **Sending the filtered audio to another program** (decoder, recorder): use VB-CABLE on the output side instead. A single cable can carry only one of these paths; a second path needs a second virtual cable.
+
+### VB-CABLE names
+
+VB-CABLE creates two endpoints, and the names are counterintuitive:
+
+| Endpoint | Windows tab | Role |
+| --- | --- | --- |
+| **CABLE Input** | Playback | Programs *send* audio here |
+| **CABLE Output** | Recording | Programs *read* that same audio here |
+
+### Receiver on the PC → processor → speakers
+
+1. Install VB-CABLE (run `VBCABLE_Setup_x64.exe` as administrator) and restart Windows.
+2. Installing may make **CABLE Input** the default playback device, which silences the PC speakers. In **Settings → System → Sound**, set the output back to your speakers.
+3. Route only the receiver to the cable: **Settings → System → Sound → Volume mixer** (Windows 11) or **App volume and device preferences** (Windows 10), and set the browser or SDR program output to **CABLE Input**. Alternatively, select CABLE Input in the SDR program's own audio settings. The receiver must be playing for the device to appear in the mixer.
+4. Set both cable endpoints to 48 kHz. Open the classic **Sound** control panel (`mmsys.cpl`):
+   - **Playback** tab → **CABLE Input** → Properties → Advanced → `2 channel, 16 bit, 48000 Hz`;
+   - **Recording** tab → **CABLE Output** → Properties → Advanced → `2 channel, 16 bit, 48000 Hz`.
+
+   Do the same for the headphones or speakers if possible.
+5. Also in the Recording tab, CABLE Output → Properties → **Listen**: leave **Listen to this device** unchecked, otherwise the unfiltered audio plays under the filtered audio.
+6. Allow microphone access for desktop apps: **Settings → Privacy & security → Microphone** → enable **Microphone access** and **Let desktop apps access your microphone**. Without this, every input, including the cable, delivers silence.
+7. In the processor: Input **CABLE Output**, Output **your headphones or speakers**. Press Start and check that the IN meter moves.
+
+### Duplicate device entries
+
+Windows exposes each device once per audio system (MME, DirectSound, WASAPI, WDM-KS), so the device lists show the same name several times with different numbers. The first group (lowest numbers) is MME, and MME names are cut to 31 characters, for example `CABLE Output (VB-Audio Virtual` with the rest cut off.
+
+- Choose the input and output from the **same group**. Mixing an MME input with a WASAPI output fails to start.
+- **MME** (lowest numbers) is the most forgiving: Windows converts sample rates, and the latency is acceptable for listening.
+- **WASAPI** has lower latency, but both devices must already be set to 48000 Hz (step 4), otherwise the stream fails with an invalid sample rate error.
+- If Start fails, the error appears in the log panel. Try the matching entries from the MME group first.
+
+### Windows troubleshooting
+
+- **IN meter does not move:** check microphone privacy (step 6), that the receiver is actually routed to CABLE Input (step 3), and that its volume is not muted.
+- **No sound from the PC after installing VB-CABLE:** the default output was changed to CABLE Input (step 2).
+- **Echo or unfiltered audio mixed in:** "Listen to this device" is enabled on CABLE Output, or the receiver is also playing to the speakers.
+- **Crackles or dropouts:** use MME or WASAPI entries, both at 48000 Hz, and close other audio programs that hold the device in exclusive mode.
+
 ## Controls
 
 - **Mode:** SSB uses the 300-2700 Hz band-pass; CW uses 600-900 Hz.
