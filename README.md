@@ -27,6 +27,7 @@ See [INSTALL.md](INSTALL.md) for development setup, [BUILD.md](BUILD.md) for pla
 - The filtered path applies an SSB or CW band-pass filter, followed by spectral noise reduction.
 - A shared soft limiter controls output peaks. It cannot repair clipping that occurred before the application received the signal.
 - Live meters show recent RMS and a decaying peak hold. Input clipping detection also catches flat-topped peaks below 0 dBFS, which occur when an interface clips at its ADC and then scales the signal down. Input clipping and limiter warnings remain latched until the stream is restarted. See [Input Level Calibration](audio_processor/USAGE.md#input-level-calibration) for setting the receiver level.
+- Transmit muting detects the near-silent receive line during TX, mutes the output, freezes the noise-reduction estimate, and fades back in afterwards. See [Transmit Muting](audio_processor/USAGE.md#transmit-muting).
 - Recording uses a bounded queue and a background writer so file I/O and encoding stay out of the audio callback.
 
 The configured block size is 2048 frames at 48 kHz (about 42.7 ms per block). Actual end-to-end latency depends on the selected devices and their host buffers; verify it on the target setup.

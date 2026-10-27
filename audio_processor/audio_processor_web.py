@@ -23,6 +23,7 @@ from audio_pipeline import (
     AsyncMonoRecorder,
     AudioLevelMeter,
     BlockConfig,
+    TxGate,
     apply_master_output,
     choose_stream_channels,
     input_is_clipped,
@@ -65,6 +66,7 @@ processor_state = {
     'bandpass_filter': None,
     'zi_bandpass': None,
     'block_config': None,
+    'tx_gate': None,
     'meters': {
         'input': AudioLevelMeter(),
         'output': AudioLevelMeter(),
@@ -75,6 +77,7 @@ processor_state = {
 
 # Audio parameters
 SAMPLE_RATE = 48000
+processor_state['tx_gate'] = TxGate(SAMPLE_RATE)
 BLOCK_SIZE = 2048
 
 # Presets for SSB mode
@@ -142,13 +145,17 @@ def audio_callback(indata, outdata, frames, time_info, status):
     meters['input'].update(indata, SAMPLE_RATE)
     meters['input_clipping'] = meters['input_clipping'] or input_is_clipped(indata)
     audio_data = to_mono(indata)
+    # During TX: mute, and keep the noise estimate from adapting to silence.
+    freeze_nr, tx_envelope = processor_state['tx_gate'].update(audio_data)
 
     if config['bypass'] or not NR_AVAILABLE or config['nr'] is None:
         filtered_audio = audio_data
     else:
         audio_data = audio_data * config['input_gain']
         try:
-            if config['bandpass_filter'] is not None:
+            if freeze_nr:
+                filtered_audio = np.zeros_like(audio_data)
+            elif config['bandpass_filter'] is not None:
                 filtered_audio, config['zi_bandpass'] = signal.sosfilt(
                     config['bandpass_filter'],
                     audio_data,
@@ -156,8 +163,9 @@ def audio_callback(indata, outdata, frames, time_info, status):
                 )
             else:
                 filtered_audio = audio_data
-            filtered_audio = config['nr'].process(filtered_audio.astype(np.float32))
-            filtered_audio = filtered_audio * config['post_gain']
+            if not freeze_nr:
+                filtered_audio = config['nr'].process(filtered_audio.astype(np.float32))
+                filtered_audio = filtered_audio * config['post_gain']
         except Exception as error:
             log(f"Audio processing error: {error}")
             filtered_audio = audio_data
@@ -165,6 +173,7 @@ def audio_callback(indata, outdata, frames, time_info, status):
     filtered_audio, limiter_active = apply_master_output(
         filtered_audio, config['output_volume']
     )
+    filtered_audio = filtered_audio * tx_envelope
     meters['limiter_active'] = meters['limiter_active'] or limiter_active
     meters['output'].update(filtered_audio, SAMPLE_RATE)
 
@@ -690,6 +699,7 @@ HTML_TEMPLATE = """
                     const warnings = [];
                     if (levels.input_clipping) warnings.push('INPUT CLIP');
                     if (levels.limiter_active) warnings.push('SOFT LIMIT');
+                    if (levels.tx_muted) warnings.push('TX MUTE');
                     const warningElement = document.getElementById('level-warning');
                     warningElement.textContent = warnings.join('  ·  ');
                     warningElement.className = warnings.length ? 'level-value level-warning' : 'level-value';
@@ -936,6 +946,7 @@ def start_processing():
             nr=processor_state['nr'],
             post_gain=processor_state['post_gain'],
         )
+        processor_state['tx_gate'].reset()
         processor_state['meters'] = {
             'input': AudioLevelMeter(),
             'output': AudioLevelMeter(),
@@ -996,6 +1007,7 @@ def get_levels():
         'output_peak_hold_dbfs': output_peak_hold,
         'input_clipping': meters['input_clipping'],
         'limiter_active': meters['limiter_active'],
+        'tx_muted': processor_state['running'] and processor_state['tx_gate'].muted,
     })
 
 @app.route('/api/recording/start', methods=['POST'])

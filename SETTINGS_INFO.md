@@ -12,6 +12,7 @@ The following settings are saved when the application closes:
 - **DSP input trim** (1-100% slider range)
 - **Master output** (10-400% slider range)
 - **Bypass** (enabled/disabled)
+- **Mute during TX** (enabled/disabled)
 
 ## Storage Locations
 

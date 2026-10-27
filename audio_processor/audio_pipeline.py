@@ -159,6 +159,91 @@ def apply_master_output(audio, gain):
     return soft_limit(pre_limiter), limiter_active
 
 
+class TxGate:
+    """Mute the output while the radio transmits and fade it back in afterwards.
+
+    During TX the receiver audio line goes almost silent. The gate tracks the
+    normal receive level and treats a sudden drop of ``enter_drop_db`` below it
+    as TX. While in TX the caller should not feed the noise-reduction filter:
+    otherwise its noise estimate adapts to the silence and the first second
+    after TX comes out unfiltered and about 10 dB louder.
+
+    ``update`` returns ``(freeze, envelope)``: whether to skip noise reduction
+    for this block, and a per-sample gain to apply to the output.
+    """
+
+    def __init__(self, sample_rate, enter_drop_db=25.0, exit_drop_db=15.0,
+                 hold_seconds=0.15, fade_in_seconds=0.4, fade_out_seconds=0.02,
+                 track_seconds=2.0, max_tx_seconds=180.0):
+        self.sample_rate = sample_rate
+        self.enter_drop_db = enter_drop_db
+        self.exit_drop_db = exit_drop_db
+        self.hold_seconds = hold_seconds
+        self.fade_in_seconds = fade_in_seconds
+        self.fade_out_seconds = fade_out_seconds
+        self.track_seconds = track_seconds
+        self.max_tx_seconds = max_tx_seconds
+        self.reset()
+
+    def reset(self):
+        self.reference_db = None
+        self.transmitting = False
+        self.tx_seconds = 0.0
+        self.hold_left = 0.0
+        self.gain = 1.0
+
+    @property
+    def muted(self):
+        """True while the output is silenced or still fading back in."""
+        return self.transmitting or self.hold_left > 0.0 or self.gain < 1.0
+
+    def _track(self, level_db, duration):
+        if self.reference_db is None:
+            self.reference_db = level_db
+        else:
+            alpha = math.exp(-duration / self.track_seconds)
+            self.reference_db = alpha * self.reference_db + (1.0 - alpha) * level_db
+
+    def update(self, audio):
+        samples = np.asarray(audio, dtype=np.float32)
+        frames = samples.shape[0]
+        if frames == 0:
+            return self.transmitting, np.ones(0, dtype=np.float32)
+        duration = frames / self.sample_rate
+        power = float(np.vdot(samples, samples).real) / samples.size
+        level_db = 10.0 * math.log10(power) if power > 0.0 else -120.0
+
+        if self.transmitting:
+            self.tx_seconds += duration
+            if level_db > self.reference_db - self.exit_drop_db:
+                self.transmitting = False
+                self.hold_left = self.hold_seconds
+            elif self.tx_seconds >= self.max_tx_seconds:
+                # A long drop is more likely a lowered receiver volume than TX:
+                # accept the new level instead of staying muted.
+                self.transmitting = False
+                self.reference_db = level_db
+        elif self.reference_db is not None and level_db < self.reference_db - self.enter_drop_db:
+            self.transmitting = True
+            self.tx_seconds = 0.0
+        else:
+            self._track(level_db, duration)
+
+        if self.transmitting:
+            target, fade_seconds = 0.0, self.fade_out_seconds
+        elif self.hold_left > 0.0:
+            target, fade_seconds = 0.0, self.fade_out_seconds
+            self.hold_left = max(0.0, self.hold_left - duration)
+        else:
+            target, fade_seconds = 1.0, self.fade_in_seconds
+
+        step = duration / fade_seconds
+        end = min(target, self.gain + step) if target > self.gain else max(target, self.gain - step)
+        envelope = np.linspace(self.gain, end, frames, dtype=np.float32)
+        self.gain = end
+        return self.transmitting, envelope
+
+
 def choose_stream_channels(input_info, output_info):
     input_channels = min(int(input_info['max_input_channels']), 2)
     output_channels = min(int(output_info['max_output_channels']), 2)
