@@ -17,6 +17,11 @@ for package in ('spectral_nr', 'sounddevice'):
     binaries += package_binaries
     hiddenimports += package_imports
 datas += copy_metadata('numpy') + copy_metadata('scipy')
+# Version shown in the window title and compared with GitHub releases.
+os.makedirs('build', exist_ok=True)
+with open(os.path.join('build', 'app_version.txt'), 'w', encoding='utf-8') as version_file:
+    version_file.write(APP_VERSION)
+datas += [(os.path.join('build', 'app_version.txt'), '.')]
 # License and attribution notices shipped with every build (GPL-3.0 requirement).
 datas += [
     ('../LICENSE', 'licenses'),
@@ -29,7 +34,7 @@ a = Analysis(
     ['lu2met_nr_gui.py'],
     binaries=binaries,
     datas=datas,
-    hiddenimports=hiddenimports + ['_sounddevice', 'scipy.signal', 'pydub'],
+    hiddenimports=hiddenimports + ['_sounddevice', 'scipy.signal', 'pydub', 'certifi'],
     excludes=['pytest', 'tkinter', 'flask', 'scipy.tests', 'numpy.tests', 'PyQt5.tests'],
     noarchive=False,
 )

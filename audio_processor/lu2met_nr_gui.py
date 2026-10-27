@@ -8,6 +8,7 @@ import sys
 import numpy as np
 import sounddevice as sd
 from scipy import signal
+import threading
 import time
 from pathlib import Path
 import logging
@@ -16,7 +17,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QLabel, QComboBox, QPushButton, 
                              QTextEdit, QRadioButton, QButtonGroup, QCheckBox,
                              QGroupBox, QMessageBox, QSlider, QScrollArea, QProgressBar)
-from PyQt5.QtCore import QThread, pyqtSignal, Qt, QTimer, QSettings
+from PyQt5.QtCore import QObject, QThread, pyqtSignal, Qt, QTimer, QSettings
 from PyQt5.QtGui import QFont, QPalette, QColor
 from audio_pipeline import (
     AsyncMonoRecorder,
@@ -31,6 +32,9 @@ from audio_pipeline import (
     volume_slider_to_gain,
     write_mono,
 )
+from update_check import app_version, check_for_update, is_development
+
+APP_VERSION = app_version()
 
 # A Windows console may use a legacy code page (e.g. cp1252) that cannot
 # encode symbols such as ✓; replace them instead of failing at startup.
@@ -433,6 +437,23 @@ def migrate_legacy_settings(settings):
         logging.info(f'Migrated {len(keys)} settings from {LEGACY_SETTINGS_APPLICATION}')
 
 
+class UpdateChecker(QObject):
+    """Look up the latest GitHub release without blocking the UI.
+
+    Uses a daemon thread so a slow or offline check never delays closing the app;
+    the signal is delivered to the window on the Qt main thread.
+    """
+    update_available = pyqtSignal(str, str)
+
+    def start(self):
+        threading.Thread(target=self._run, name='update-check', daemon=True).start()
+
+    def _run(self):
+        release = check_for_update(APP_VERSION)
+        if release:
+            self.update_available.emit(*release)
+
+
 class LU2METNRWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -446,9 +467,29 @@ class LU2METNRWindow(QMainWindow):
         self.level_timer = QTimer(self)
         self.level_timer.timeout.connect(self.update_audio_levels)
         self.level_timer.start(100)
-        
+        self.update_checker = UpdateChecker(self)
+        self.update_checker.update_available.connect(self.show_update)
+        if not is_development(APP_VERSION):
+            QTimer.singleShot(2000, self.update_checker.start)
+
+    def show_update(self, tag, url):
+        if self.settings.value('updates/dismissed_version') == tag:
+            return
+        self.available_update = tag
+        self.update_label.setText(
+            f'New version {tag} available (you have {APP_VERSION}). '
+            f'<a href="{url}" style="color: #1e3a8a;">Download</a>'
+        )
+        self.update_banner.show()
+        self.add_log(f'Update available: {tag} - {url}')
+
+    def dismiss_update(self):
+        if self.available_update:
+            self.settings.setValue('updates/dismissed_version', self.available_update)
+        self.update_banner.hide()
+
     def init_ui(self):
-        self.setWindowTitle('LU2MET NR Filter v1.0.0-beta')
+        self.setWindowTitle(f'LU2MET NR Filter {APP_VERSION}')
         self.setGeometry(100, 100, 600, 700)
         self.setMinimumSize(400, 300)  # Minimum window size
         
@@ -463,7 +504,28 @@ class LU2METNRWindow(QMainWindow):
         content_widget = QWidget()
         scroll.setWidget(content_widget)
         layout = QVBoxLayout(content_widget)
-        
+
+        # Update banner, shown when a newer release is published
+        self.update_banner = QWidget()
+        self.update_banner.setStyleSheet('background: #f59e0b; border-radius: 6px;')
+        banner_layout = QHBoxLayout(self.update_banner)
+        banner_layout.setContentsMargins(10, 6, 6, 6)
+        self.update_label = QLabel()
+        self.update_label.setTextFormat(Qt.RichText)
+        self.update_label.setOpenExternalLinks(True)
+        self.update_label.setWordWrap(True)
+        self.update_label.setStyleSheet('color: #1f2937; font-weight: bold;')
+        banner_layout.addWidget(self.update_label, 1)
+        dismiss_btn = QPushButton('✕')
+        dismiss_btn.setFixedWidth(28)
+        dismiss_btn.setToolTip('Hide until the next version')
+        dismiss_btn.setStyleSheet('background: transparent; color: #1f2937; border: 0; font-weight: bold;')
+        dismiss_btn.clicked.connect(self.dismiss_update)
+        banner_layout.addWidget(dismiss_btn)
+        self.update_banner.hide()
+        self.available_update = None
+        layout.addWidget(self.update_banner)
+
         # Header
         header = QLabel('📻 LU2MET NR Filter')
         header.setFont(QFont('Arial', 16, QFont.Bold))
@@ -972,6 +1034,13 @@ def self_test():
         # The extreme preset scales by 1/16384; unfiltered samples would be ~0.1+.
         if output.shape != block.shape or not 0.0 < peak < 0.01:
             raise RuntimeError(f'Unexpected NR output: shape={output.shape} peak={peak}')
+        logging.info(f'Self-test: version {APP_VERSION}, TLS certificates')
+        if getattr(sys, 'frozen', False):
+            if APP_VERSION == 'dev':
+                raise RuntimeError('app_version.txt is missing from the package')
+            import certifi
+            import ssl
+            ssl.create_default_context(cafile=certifi.where())
         logging.info('Self-test: audio devices')
         sd.query_devices()
         logging.info('Self-test: Qt')

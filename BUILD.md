@@ -72,6 +72,14 @@ git push origin v1.1.0
 
 Tags with a suffix, such as `v1.1.0-beta.1`, are published as pre-releases.
 
+Use `vMAJOR.MINOR.PATCH` tags. The version is embedded in the app (window title, macOS `Info.plist`, and `app_version.txt` in the package).
+
+### Update notice in the app
+
+At startup, packaged builds ask GitHub for the latest **stable** release (`/releases/latest`, which excludes drafts and pre-releases). When it is newer than the running version, a banner at the top of the window links to the release. The banner can be dismissed; it stays hidden until a newer version is published. Development builds (`0.0.0-dev.*`) and runs from source do not check. The check runs in the background with a 5-second timeout and is silent when offline.
+
+To preview the banner, set `LU2MET_NR_VERSION` to an older version (for example `LU2MET_NR_VERSION=0.9.0`) when starting the app, once a stable release exists.
+
 The zips in `Download/` are maintained manually and are not touched by the workflow.
 
 ## First Launch

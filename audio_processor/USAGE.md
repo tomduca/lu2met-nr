@@ -50,6 +50,10 @@ To set the level:
 
 A clean setting may require a very low receiver volume; this is expected with a microphone-level input. A fixed-level line, ACC, or DATA output on the receiver, or an attenuator before the interface, allows a higher receiver setting. Audio isolation transformers on the input and output lines prevent ground-loop hum but do not by themselves reduce the level enough for a microphone input.
 
+## Updates
+
+When a newer version is published, a banner at the top of the window shows its number and a **Download** link. Select **✕** to hide it until the next version.
+
 ## Recording
 
 Start audio processing before recording. Recordings are written as mono WAV and converted to MP3 when the optional MP3 encoder dependencies are available. Recording writes happen on a background thread with a bounded queue; if the queue fills, dropped blocks are reported.
