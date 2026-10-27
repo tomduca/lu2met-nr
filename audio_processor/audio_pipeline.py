@@ -2,6 +2,7 @@ from pathlib import Path
 from datetime import datetime
 import math
 import queue
+import re
 import sys
 import threading
 import time
@@ -250,6 +251,60 @@ def choose_stream_channels(input_info, output_info):
     if input_channels < 1 or output_channels < 1:
         raise ValueError('Selected audio devices must support input and output channels')
     return input_channels, output_channels
+
+
+# Windows lists every device once per host API. DirectSound and WDM-KS only add
+# duplicates, so the device lists offer WASAPI (full names) and MME (names cut
+# to 31 characters, but Windows converts sample rates).
+WINDOWS_HOST_APIS = {'Windows WASAPI': 'WASAPI', 'MME': 'MME'}
+
+
+def device_choices(devices, hostapis, kind, platform=None):
+    """Return (device index, label) pairs for devices with `kind` channels.
+
+    `kind` is 'input' or 'output'. On Windows the label names the host API,
+    since the same device appears once per API.
+    """
+    platform = sys.platform if platform is None else platform
+    key = f'max_{kind}_channels'
+    usable = [(idx, dev) for idx, dev in enumerate(devices) if dev[key] > 0]
+    if not platform.startswith('win'):
+        return [(idx, dev['name']) for idx, dev in usable]
+
+    api_names = [api['name'] for api in hostapis]
+    choices = []
+    for api_name, short in WINDOWS_HOST_APIS.items():
+        for idx, dev in usable:
+            if api_names[dev['hostapi']] == api_name:
+                choices.append((idx, f"{dev['name']} [{short}]"))
+    if choices:
+        return choices
+    return [(idx, f"{dev['name']} [{api_names[dev['hostapi']]}]") for idx, dev in usable]
+
+
+def find_device_label(labels, saved):
+    """Index in `labels` of a saved device, or -1.
+
+    Accepts labels saved by older versions, which started with the device
+    number ("3: Name") and had no host API on Windows.
+    """
+    if saved in labels:
+        return labels.index(saved)
+    name = re.sub(r'^\d+: ', '', saved)
+    for i, label in enumerate(labels):
+        if label == name or re.sub(r' \[[^\]]+\]$', '', label) == name:
+            return i
+    return -1
+
+
+def check_same_host_api(input_info, output_info, hostapis):
+    if input_info['hostapi'] != output_info['hostapi']:
+        input_api = hostapis[input_info['hostapi']]['name']
+        output_api = hostapis[output_info['hostapi']]['name']
+        raise ValueError(
+            f'Input ({input_api}) and output ({output_api}) use different audio systems. '
+            'Choose both devices with the same tag, for example both [WASAPI] or both [MME].'
+        )
 
 
 def to_mono(indata):

@@ -10,7 +10,7 @@ Download the app for your platform from [Releases](https://github.com/tomduca/lu
 ./audio_processor/run_qt_gui.sh
 ```
 
-See [INSTALL.md](INSTALL.md) for development setup, [BUILD.md](BUILD.md) for platform packaging instructions, and [audio_processor/USAGE.md](audio_processor/USAGE.md) for using the application.
+See [INSTALL.md](INSTALL.md) for development setup, [BUILD.md](BUILD.md) for platform packaging instructions, and [audio_processor/USAGE.md](audio_processor/USAGE.md) for using the application, including [Windows setup with VB-CABLE](audio_processor/USAGE.md#windows-setup).
 
 ## Audio Path
 
