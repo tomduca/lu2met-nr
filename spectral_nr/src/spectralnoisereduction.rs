@@ -519,7 +519,7 @@ impl SpectralNoiseReduction {
         // INITIALIZATION ONCE 1
         if self.first_time == 1 {
             for bindx in 0..FFT_HALF {
-                self.last_sample_buffer[bindx] = buf[bindx] * SQRT_HANN_256[bindx];
+                self.last_sample_buffer[bindx] = 0.0;
                 self.nr_g[bindx] = 1.0;
                 self.nr_hk_old[bindx] = 1.0;
                 self.nr_nest[bindx] = 0.0;
@@ -943,7 +943,7 @@ impl SpectralNoiseReduction {
             // do the overlap & add
             for i in 0..FFT_HALF {
                 // take real part of first half of current iFFT result and add to 2nd half of last iFFT_result
-                buf[i] = (self.fft_buffer[i].re + self.last_ifft_result[i]) * self.final_gain;
+                buf[i + k * FFT_HALF] = (self.fft_buffer[i].re + self.last_ifft_result[i]) * self.final_gain;
             }
 
             // save 2nd half of iFFT result

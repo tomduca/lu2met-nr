@@ -30,7 +30,7 @@ Cargo.lock
 
 # Logs
 *.log
-novasdr_debug.log
+lu2met_nr_debug.log
 
 # Audio recordings (keep folder, ignore files)
 audio_processor/recordings/*.wav
@@ -41,3 +41,5 @@ audio_processor/recordings/*.mp3
 test_*.py
 simple_*.py
 temp
+.build-venv/
+!audio_processor/LU2MET_NR.spec

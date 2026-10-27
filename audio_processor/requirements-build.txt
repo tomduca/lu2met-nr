@@ -1,0 +1,10 @@
+# Pinned dependencies for packaged builds (Python 3.12).
+# Used by build_macos.sh, build_windows.ps1 and the GitHub Actions workflow.
+numpy==2.5.4
+scipy==1.18.1
+sounddevice==0.5.6
+PyQt5==5.15.11
+pydub==0.25.1
+maturin==1.15.0
+pyinstaller==6.22.3
+certifi==2026.10.23

@@ -1,7 +1,7 @@
 #!/bin/bash
-# Run NovaSDR Audio Processor Standalone App
+# Run LU2MET NR Filter Standalone App
 
 cd "$(dirname "$0")"
 source venv/bin/activate
 
-python3 novasdr_app.py
+python3 web_launcher.py

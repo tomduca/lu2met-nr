@@ -1,6 +1,6 @@
-# NovaSDR Audio Processor - GUI Options
+# LU2MET NR Filter - GUI Options
 
-This document describes the two available GUI options for the NovaSDR Audio Processor and how to use and distribute them.
+This document describes the two available GUI options for the LU2MET NR Filter and how to use and distribute them.
 
 ## 📱 Option 1: Native Desktop Application (PyQt5) - **RECOMMENDED**
 
@@ -35,15 +35,15 @@ cd audio_processor
 ./build_macos.sh
 ```
 
-**Output:** `dist/NovaSDR Audio Processor.app`
+**Output:** `dist/LU2MET NR Filter.app`
 
 **To run:**
 ```bash
-open "dist/NovaSDR Audio Processor.app"
+open "dist/LU2MET NR Filter.app"
 ```
 
 **To distribute:**
-1. Compress: `zip -r NovaSDR-macOS.zip "dist/NovaSDR Audio Processor.app"`
+1. Compress: `zip -r LU2MET_NR-macOS.zip "dist/LU2MET NR Filter.app"`
 2. Share the .zip file
 3. Users extract and drag to Applications folder
 
@@ -56,7 +56,7 @@ cd audio_processor
 build_windows.bat
 ```
 
-**Output:** `dist\NovaSDR Audio Processor.exe`
+**Output:** `dist\LU2MET NR Filter.exe`
 
 **To distribute:**
 - Share the .exe file directly
@@ -65,15 +65,15 @@ build_windows.bat
 ### Installation for End Users
 
 **macOS:**
-1. Download and extract `NovaSDR-macOS.zip`
-2. Drag `NovaSDR Audio Processor.app` to Applications folder
+1. Download and extract `LU2MET_NR-macOS.zip`
+2. Drag `LU2MET NR Filter.app` to Applications folder
 3. Right-click → Open (first time only, to bypass Gatekeeper)
 4. Install BlackHole 2ch virtual audio device
 5. Configure Multi-Output Device in Audio MIDI Setup
 6. Run the application
 
 **Windows:**
-1. Download `NovaSDR Audio Processor.exe`
+1. Download `LU2MET NR Filter.exe`
 2. Run the executable
 3. If Windows Defender warns, click "More info" → "Run anyway"
 4. Install VB-Cable or similar virtual audio device
@@ -132,11 +132,11 @@ The web version can also be packaged as a standalone app that starts Flask and o
 
 ```bash
 cd audio_processor
-# Edit build_macos.sh to use novasdr_app.py instead of novasdr_gui_qt.py
+# Edit build_macos.sh to use web_launcher.py instead of lu2met_nr_gui.py
 ./build_macos.sh
 ```
 
-**Output:** `dist/NovaSDR Audio Processor.app`
+**Output:** `dist/LU2MET NR Filter.app`
 
 The app will:
 1. Start Flask server on localhost:5001
@@ -147,7 +147,7 @@ The app will:
 
 ```batch
 cd audio_processor
-REM Edit build_windows.bat to use novasdr_app.py
+REM Edit build_windows.bat to use web_launcher.py
 build_windows.bat
 ```
 
@@ -187,7 +187,7 @@ build_windows.bat
 ### Common Requirements
 - Python 3.10+
 - Virtual environment with dependencies installed
-- NovaSDR Rust module compiled (`maturin develop --release`)
+- `spectral_nr` Rust module compiled (`maturin develop --release`)
 
 ### Native App Additional Requirements
 - PyQt5: `pip install PyQt5`
@@ -233,7 +233,7 @@ Use **Web Interface** (`./run_web.sh`) for:
 ### Before Building
 
 - [ ] Test all features thoroughly
-- [ ] Verify NovaSDR module works
+- [ ] Verify Noise reduction module works
 - [ ] Test on clean system (no Python)
 - [ ] Check recording functionality
 - [ ] Test mode switching (SSB/CW)
@@ -272,7 +272,7 @@ Use **Web Interface** (`./run_web.sh`) for:
 **App won't start:**
 - Check terminal output for errors
 - Verify audio devices are available
-- Try running with `python3 novasdr_gui_qt.py` directly
+- Try running with `python3 lu2met_nr_gui.py` directly
 
 **Audio not working:**
 - Verify virtual audio device is installed
@@ -300,21 +300,21 @@ Use **Web Interface** (`./run_web.sh`) for:
 ## 📚 Files Reference
 
 ### Native App (PyQt5)
-- **Source:** `audio_processor/novasdr_gui_qt.py`
+- **Source:** `audio_processor/lu2met_nr_gui.py`
 - **Run script:** `audio_processor/run_qt_gui.sh`
-- **Build script:** `audio_processor/build_macos.sh` (set to use novasdr_gui_qt.py)
+- **Build script:** `audio_processor/build_macos.sh` (set to use lu2met_nr_gui.py)
 
 ### Web Interface
 - **Source:** `audio_processor/audio_processor_web.py`
 - **Run script:** `audio_processor/run_web.sh`
-- **App wrapper:** `audio_processor/novasdr_app.py`
+- **App wrapper:** `audio_processor/web_launcher.py`
 - **App run script:** `audio_processor/run_app.sh`
-- **Build script:** `audio_processor/build_macos.sh` (set to use novasdr_app.py)
+- **Build script:** `audio_processor/build_macos.sh` (set to use web_launcher.py)
 
 ### Common
 - **Recordings:** `audio_processor/recordings/`
 - **Dependencies:** `audio_processor/venv/`
-- **Rust module:** `novasdr_nr_py/`
+- **Rust module:** `spectral_nr/`
 
 ---
 
@@ -326,7 +326,7 @@ Use **Web Interface** (`./run_web.sh`) for:
 ./run_qt_gui.sh
 
 # Build for distribution
-./build_macos.sh  # Creates dist/NovaSDR Audio Processor.app
+./build_macos.sh  # Creates dist/LU2MET NR Filter.app
 ```
 
 ### Web Interface
@@ -336,7 +336,7 @@ Use **Web Interface** (`./run_web.sh`) for:
 ./run_app.sh      # Auto-opens browser
 
 # Build for distribution
-# Edit build_macos.sh to use novasdr_app.py, then:
+# Edit build_macos.sh to use web_launcher.py, then:
 ./build_macos.sh
 ```
 
@@ -346,7 +346,7 @@ Use **Web Interface** (`./run_web.sh`) for:
 
 - **Installation:** See `INSTALL.md`
 - **Usage Guide:** See `audio_processor/USAGE.md`
-- **Standalone Apps:** See `STANDALONE_APP_GUIDE.md`
+- **Standalone Apps:** See `BUILD.md`
 - **Technical Details:** See `SOLUTION_SUMMARY.md`
 
 ---

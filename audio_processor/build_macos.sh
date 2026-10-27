@@ -1,70 +1,59 @@
 #!/bin/bash
-# Build standalone macOS application (.app bundle)
+# Build the macOS app bundle and a distributable zip for the current CPU
+# architecture. Uses a separate build environment (.build-venv), so the
+# development venv is not modified.
+#
+# Environment overrides:
+#   PYTHON       Python used to create the build environment (default python3.12)
+#   APP_VERSION  Version embedded in the app and zip name (default 0.0.0-dev.<commit>)
+set -euo pipefail
 
-echo "Building NovaSDR Audio Processor for macOS..."
+cd "$(dirname "$0")"
 
-# Activate virtual environment
-source venv/bin/activate
+PYTHON="${PYTHON:-python3.12}"
+BUILD_VENV=".build-venv"
+APP_VERSION="${APP_VERSION:-0.0.0-dev.$(git rev-parse --short HEAD)}"
+ARCH="$(uname -m)"
+APP="dist/LU2MET_NR.app"
+ZIP="dist/LU2MET_NR-macos-${ARCH}-${APP_VERSION}.zip"
+export APP_VERSION
 
-# Install PyInstaller
-pip install pyinstaller
+echo "==> Building LU2MET NR Filter ${APP_VERSION} for macOS ${ARCH}"
 
-# Find the novasdr_nr module (optional)
-NOVASDR_MODULE=$(python3 -c "import novasdr_nr; import os; print(os.path.dirname(novasdr_nr.__file__))" 2>/dev/null || echo "")
+if [ ! -x "${BUILD_VENV}/bin/python" ]; then
+    echo "==> Creating build environment with ${PYTHON}"
+    "${PYTHON}" -m venv "${BUILD_VENV}"
+fi
+source "${BUILD_VENV}/bin/activate"
+python -m pip install --quiet --upgrade pip
+python -m pip install --quiet -r requirements-build.txt
 
-if [ -n "$NOVASDR_MODULE" ]; then
-    echo "NovaSDR module found at: $NOVASDR_MODULE"
-    NOVASDR_BINARY="--add-binary=$NOVASDR_MODULE/novasdr_nr*.so:."
-else
-    echo "NovaSDR module not found - building without it"
-    NOVASDR_BINARY=""
+echo "==> Building spectral_nr Rust extension"
+rm -rf build dist
+maturin build --release --locked -m ../spectral_nr/Cargo.toml -o build/wheels
+python -m pip install --quiet --force-reinstall --no-deps build/wheels/*.whl
+
+echo "==> Running tests"
+python -m unittest discover -s tests -p 'tests_*.py'
+
+echo "==> Packaging with PyInstaller"
+pyinstaller --noconfirm --clean LU2MET_NR.spec
+
+echo "==> Signing (ad-hoc)"
+codesign --force --deep --sign - "${APP}"
+codesign --verify --deep --strict "${APP}"
+
+echo "==> Self-test of the packaged app"
+if ! QT_QPA_PLATFORM=offscreen "${APP}/Contents/MacOS/LU2MET_NR" --self-test; then
+    tail -n 40 "${HOME}/lu2met_nr_debug.log" || true
+    echo "Packaged app self-test failed" >&2
+    exit 1
 fi
 
-# Clean previous builds
-rm -rf build dist *.spec
-
-# Build the application
-pyinstaller --name="LU2MET_NR" \
-    --windowed \
-    --onedir \
-    --icon=app_icon.icns \
-    --osx-bundle-identifier=com.lu2met.nr \
-    --add-data="recordings:recordings" \
-    $NOVASDR_BINARY \
-    --hidden-import=numpy \
-    --hidden-import=numpy.core._multiarray_umath \
-    --hidden-import=scipy.signal \
-    --hidden-import=scipy.fft \
-    --hidden-import=sounddevice \
-    --hidden-import=_sounddevice \
-    --hidden-import=novasdr_nr \
-    --hidden-import=pydub \
-    --hidden-import=PyQt5 \
-    --hidden-import=PyQt5.QtCore \
-    --hidden-import=PyQt5.QtGui \
-    --hidden-import=PyQt5.QtWidgets \
-    --collect-all=sounddevice \
-    --copy-metadata=numpy \
-    --copy-metadata=scipy \
-    --exclude-module=scipy.tests \
-    --exclude-module=scipy.*.tests \
-    --exclude-module=numpy.tests \
-    --exclude-module=PyQt5.tests \
-    --exclude-module=pytest \
-    novasdr_gui_qt.py
+echo "==> Creating ${ZIP}"
+ditto -c -k --keepParent "${APP}" "${ZIP}"
 
 echo ""
-echo "Adding Info.plist with microphone permissions..."
-cp Info.plist "dist/LU2MET_NR.app/Contents/Info.plist"
-
-echo "Re-signing application..."
-codesign --force --deep --sign - "dist/LU2MET_NR.app"
-
-echo ""
-echo "✓ Build complete!"
-echo "Application: dist/LU2MET_NR.app"
-echo ""
-echo "To run: open 'dist/LU2MET_NR.app'"
-echo ""
-echo "Note: The app includes all dependencies and the NovaSDR Rust module."
-echo "Note: First launch will request microphone permissions - click Allow."
+echo "Build complete:"
+echo "  App: audio_processor/${APP}"
+echo "  Zip: audio_processor/${ZIP}"

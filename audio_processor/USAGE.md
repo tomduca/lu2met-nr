@@ -1,231 +1,68 @@
-# NovaSDR Audio Processor - Usage Guide
+# Usage Guide
 
-## ✅ Final Solution
+## Start
 
-Hybrid **Python + Rust** pipeline integrating NovaSDR Spectral Noise Reduction filter.
-
-## 🚀 Quick Start
-
-### Recommended Preset: ULTRA ⭐
+From `audio_processor/`, run the native desktop interface:
 
 ```bash
-./run_ultra.sh
+./run_qt_gui.sh
 ```
 
-**Features:**
-- Noise reduction nearly identical to original SDR Nova
-- Optimal volume (automatic +20 dB compensation)
-- Ultra low latency (~43ms)
-- Excellent audio quality
-
-## Available Scripts
-
-### 1. Ultra (Recommended) ⭐
-```bash
-./run_ultra.sh
-```
-- **Reduction:** Maximum (nearly identical to NovaSDR web)
-- **Volume:** Optimal (post-gain 10.0x)
-- **Use:** General use, maximum quality
-
-### 2. Aggressive
-```bash
-./run_aggressive.sh
-```
-- **Reduction:** Strong
-- **Volume:** Good (post-gain 2.5x)
-- **Use:** Alternative if Ultra is too aggressive
-
-### 3. Moderate
-```bash
-./run_moderate.sh
-```
-- **Reduction:** Moderate
-- **Volume:** Normal (post-gain 1.5x)
-- **Use:** Clean audio, less processing
-
-## Audio Configuration
-
-### Step 1: Identify Devices
-
-Run the script to list available devices:
+To use the browser interface:
 
 ```bash
-./run_ultra.sh
+./run_web.sh
 ```
 
-Look for in the output:
-- **Virtual capture device** (e.g.: BlackHole, Loopback, etc.)
-  - Must have input channels (X in, Y out where X > 0)
-  - Note the **numeric index** (e.g.: 5)
-  
-- **Output device** (headphones/speakers)
-  - Must have output channels (0 in, Y out where Y > 0)
-  - Note the **numeric index** (e.g.: 2)
+The browser interface is served locally at `http://localhost:5001`.
 
-### Step 2: Configure Multi-Output Device
+## Audio Routing
 
-1. **Open Audio MIDI Setup**
-   ```
-   /Applications/Utilities/Audio MIDI Setup.app
-   ```
+1. Select the radio or virtual capture device as the input.
+2. Select headphones or speakers as the output.
+3. The processor opens one or two input channels, downmixes them to mono, and copies the mono signal to every output channel.
+4. Start the stream and confirm that input and output meters respond.
 
-2. **Create/Edit Multi-Output Device**
-   - Click "+" → "Create Multi-Output Device"
-   - Check **ONLY** your virtual capture device
-   - DO NOT check headphones/speakers (to prevent echo)
+On macOS, a virtual device such as BlackHole may be used to route receiver audio into the processor. Configure system audio routing in Audio MIDI Setup as required by the receiver and capture setup.
 
-3. **Configure system output**
-   - System Settings → Sound → Output
-   - Select "Multi-Output Device"
+## Controls
 
-### Step 3: Configure Scripts
+- **Mode:** SSB uses the 300-2700 Hz band-pass; CW uses 600-900 Hz.
+- **Preset:** Selects the spectral noise-reduction parameters for the chosen mode.
+- **DSP Input Trim:** Adjusts the level sent into the filter. It only affects the filtered path and cannot undo clipping that already occurred at the audio device or ADC.
+- **Master Output:** Adjusts listening level in both bypass and filtered modes. A soft limiter controls output peaks.
+- **Bypass:** Skips band-pass and spectral noise reduction while retaining the master output stage.
 
-Edit the script you use (e.g.: `run_ultra.sh`) and adjust the indices:
+The meters show recent RMS and a peak value that holds briefly and then decays. The bar turns amber when the peak passes -6 dBFS and red above -1 dBFS. The **CLIP** indicator next to IN turns red when input clipping is detected; lower the radio/interface output before capture. The **LIMIT** indicator next to OUT turns red when the output soft limiter has engaged. Both indicators stay latched until the stream is stopped and started again.
 
-```bash
-python3 audio_processor_novasdr_tunable.py --preset ultra --input <CAPTURE_INDEX> --output <OUTPUT_INDEX>
-```
+## Input Level Calibration
 
-Example:
-```bash
-python3 audio_processor_novasdr_tunable.py --preset ultra --input 5 --output 2
-```
+Many USB audio interfaces, including common Realtek USB adapters, have a high-gain microphone-level input. A receiver's headphone or speaker output is much hotter, so the interface clips at its ADC long before the receiver volume reaches its maximum. Some of these interfaces then apply their macOS input volume digitally, after the ADC. In that case clipped peaks appear below 0 dBFS: with the input volume at -7.5 dB in Audio MIDI Setup, a clipped signal tops out at about -7.5 dBFS in the application.
 
-### Audio Flow
+The CLIP indicator detects both full-scale samples and flat-topped runs at the channel peak, so it also catches clipping that the interface has scaled down. Another sign of upstream clipping or heavy compression is a small gap between the peak and RMS readings: clean SSB speech typically shows 12-18 dB, HF band noise about 10-12 dB, and a gap near 5 dB means the peaks are being flattened before capture.
 
-```
-WebSDR (Safari)
-    ↓
-Multi-Output Device (macOS output)
-    ↓
-Virtual Capture Device (e.g.: BlackHole)
-    ↓
-Python Input (index you noted)
-    ↓
-NovaSDR Spectral NR (RUST)
-    ↓
-Post-Gain (volume compensation)
-    ↓
-Python Output (index you noted)
-    ↓
-Headphones / Speakers
-```
+To set the level:
 
-## Preset Parameters
+1. Enable **Bypass** and set **Master Output** to 0 dB.
+2. Raise the receiver volume until CLIP turns red, then lower it until the audio sounds clean.
+3. Press **Stop** and **Start** to clear the indicator and confirm it stays grey. Aim for roughly -20 dBFS RMS with peaks between -12 and -6 dBFS.
+4. Recover the listening level with **Master Output**, which applies to both bypass and filtered audio.
 
-| Preset | Gain | Alpha | ASNR | Post-Gain | Reduction |
-|--------|------|-------|------|-----------|-----------|
-| Moderate | 1/1024 | 0.98 | 20 dB | 1.5x | ⭐⭐⭐ |
-| Aggressive | 1/2048 | 0.98 | 10 dB | 2.5x | ⭐⭐⭐⭐ |
-| Ultra | 1/8192 | 0.99 | 2 dB | 10.0x | ⭐⭐⭐⭐⭐ |
+A clean setting may require a very low receiver volume; this is expected with a microphone-level input. A fixed-level line, ACC, or DATA output on the receiver, or an attenuator before the interface, allows a higher receiver setting. Audio isolation transformers on the input and output lines prevent ground-loop hum but do not by themselves reduce the level enough for a microphone input.
 
-## Performance
+## Updates
 
-- **Total latency:** ~43ms
-- **Processing:** ~0.1-0.2ms per block
-- **CPU:** Very low (Rust optimized)
-- **Quality:** Equal to original NovaSDR web
+When a newer version is published, a banner at the top of the window shows its number and a **Download** link. Select **✕** to hide it until the next version.
 
-## Recording Audio
+## Recording
 
-The web interface includes audio recording functionality to save processed audio.
-
-### How to Record
-
-1. **Start audio processing** (click ▶ Start button)
-2. **Click "🔴 Start Recording"** when ready
-3. **Listen and record** your desired content
-4. **Click "⏹️ Stop Recording"** when done
-
-### Recording Details
-
-- **Format:** MP3 (128kbps) or WAV (fallback)
-- **Filename:** `recording_YYYYMMDD_HHMMSS.mp3`
-- **Location:** `audio_processor/recordings/`
-- **Audio:** Processed output (with NovaSDR filter applied)
-
-### Requirements for MP3
-
-MP3 recording requires `ffmpeg`:
-
-```bash
-brew install ffmpeg
-```
-
-If `ffmpeg` is not installed, recordings will automatically save as WAV format.
-
-### Example Filenames
-
-```
-recording_20260331_233045.mp3
-recording_20260331_234120.mp3
-recording_20260401_081530.mp3
-```
+Start audio processing before recording. Recordings are written as mono WAV and converted to MP3 when the optional MP3 encoder dependencies are available. Recording writes happen on a background thread with a bounded queue; if the queue fills, dropped blocks are reported.
 
 ## Troubleshooting
 
-### No audio output
+- **No input signal:** Run `python list_devices.py`, check input permissions, and verify the radio's routing to the selected capture device.
+- **No output:** Check the selected output device and the system output level.
+- **Clipped input or distorted bypass audio:** Reduce the level before the computer's audio input; see [Input Level Calibration](#input-level-calibration). The DSP trim is downstream and cannot repair ADC clipping.
+- **Uneven level between bypass and filtering:** Adjust Master Output to a comfortable listening level; the filter path may have a different average level from bypass.
 
-**Verify:**
-1. ✅ Browser is using Multi-Output Device as output
-2. ✅ Processor is running without errors
-3. ✅ Volume is not muted
-4. ✅ Device indices are correct (verify with --list-devices)
-5. ✅ Virtual capture device is included in Multi-Output Device
-
-### Echo / Duplicated audio
-- Uncheck output device from Multi-Output Device
-- Only virtual capture device should be checked
-
-### Low volume
-- Use Ultra preset (post-gain 10.0x)
-- Or adjust manually with `--post-gain`
-
-### Too many artifacts
-- Use Aggressive or Moderate preset
-- Ultra is very aggressive for clean signals
-
-## Manual Adjustments (Advanced)
-
-If you want to adjust parameters manually:
-
-```bash
-source venv/bin/activate
-python3 audio_processor_novasdr_tunable.py \
-    --gain 0.000122 \
-    --alpha 0.99 \
-    --asnr 2.0 \
-    --post-gain 10.0 \
-    --input 5 \
-    --output 2
-```
-
-## Project Files
-
-### Essential
-- `run_ultra.sh` - Main script (RECOMMENDED)
-- `run_aggressive.sh` - Less aggressive alternative
-- `run_moderate.sh` - Soft alternative
-- `audio_processor_novasdr_tunable.py` - Python processor
-- `venv/` - Virtualenv with dependencies
-
-### Rust Module
-- `../novasdr_nr_py/` - Compiled PyO3 module
-- `../novasdr_nr_py/src/spectralnoisereduction.rs` - NovaSDR filter
-
-## Technologies
-
-- **Python:** sounddevice, numpy, scipy
-- **Rust:** PyO3, rustfft
-- **DSP:** NovaSDR Spectral Noise Reduction (MMSE)
-
-## Summary
-
-✅ **Pipeline working:** Python I/O + Rust DSP  
-✅ **Quality:** Equal to original NovaSDR web  
-✅ **Latency:** ~43ms (excellent)  
-✅ **Volume:** Optimal with automatic compensation  
-✅ **Recommended preset:** `./run_ultra.sh`  
-
-**Ready to use with WebSDR!**
+For attribution and dependency notices, see [THIRD_PARTY.md](../THIRD_PARTY.md).

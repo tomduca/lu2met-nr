@@ -1,542 +1,107 @@
-# Building NovaSDR Audio Processor - Standalone Applications
+# Building the Desktop App
 
-This guide covers building standalone desktop applications for macOS and Windows.
+This is the canonical guide for packaging the LU2MET NR Filter (PyQt5 interface) for macOS and Windows. For running from source during development, see [INSTALL.md](INSTALL.md).
 
-## Table of Contents
+The same build scripts run locally and in GitHub Actions. Each script:
 
-- [macOS Build](#macos-build)
-- [Windows Build](#windows-build)
-- [Common Prerequisites](#common-prerequisites)
-- [Troubleshooting](#troubleshooting)
+1. Creates a separate build environment, `audio_processor/.build-venv` (Python 3.12). The development `venv` is not modified.
+2. Installs the pinned versions from [`audio_processor/requirements-build.txt`](audio_processor/requirements-build.txt).
+3. Builds the `spectral_nr` Rust extension with `maturin --locked`, so `spectral_nr/Cargo.lock` is respected.
+4. Runs the unit tests, including a regression test that compares the filter output with the reference build.
+5. Packages the app with PyInstaller using [`audio_processor/LU2MET_NR.spec`](audio_processor/LU2MET_NR.spec).
+6. Runs the packaged app with `--self-test`, which checks that the bundled DSP chain loads and produces correctly scaled output.
+7. Creates a zip in `audio_processor/dist/`.
 
----
+## macOS
 
-## macOS Build
-
-### Prerequisites
-
-1. **macOS 10.14 or higher**
-
-2. **Xcode Command Line Tools**
-   ```bash
-   xcode-select --install
-   ```
-
-3. **Homebrew** (package manager)
-   ```bash
-   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-   ```
-
-4. **Python 3.10 or higher**
-   ```bash
-   brew install python@3.14
-   ```
-
-5. **Rust** (for NovaSDR module)
-   ```bash
-   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-   source $HOME/.cargo/env
-   ```
-
-6. **BlackHole 2ch** (virtual audio device)
-   ```bash
-   brew install blackhole-2ch
-   ```
-
-7. **FFmpeg** (optional, for MP3 recording)
-   ```bash
-   brew install ffmpeg
-   ```
-
-### Build Steps
-
-#### 1. Clone the Repository
+Requirements: Xcode Command Line Tools (`xcode-select --install`), Python 3.12 (`brew install python@3.12`), and Rust (<https://rustup.rs>).
 
 ```bash
-git clone https://github.com/tomduca/novasdr-audio-processor.git
-cd novasdr-audio-processor
+./audio_processor/build_macos.sh
 ```
 
-#### 2. Build the Rust NovaSDR Module
+Output:
+
+- `audio_processor/dist/LU2MET_NR.app`
+- `audio_processor/dist/LU2MET_NR-macos-<arch>-<version>.zip`
+
+The app is built for the CPU of the machine that runs the script: `x86_64` on Intel Macs and `arm64` on Apple Silicon. GitHub Actions builds both. The microphone permission text and version are set in the spec file. The bundle is ad-hoc signed; it is not notarized.
+
+Set `PYTHON=/path/to/python3.12` if `python3.12` is not on `PATH`.
+
+## Windows
+
+Requirements: Python 3.12 from <https://www.python.org> (the `py` launcher is used when present), Rust from <https://rustup.rs>, and the Visual Studio Build Tools with "Desktop development with C++" (required by Rust).
+
+From PowerShell:
+
+```powershell
+.\audio_processor\build_windows.ps1
+```
+
+Or double-click `audio_processor\build_windows.bat`, which runs the same script.
+
+Output:
+
+- `audio_processor\dist\LU2MET_NR\LU2MET_NR.exe` and its supporting files
+- `audio_processor\dist\LU2MET_NR-windows-x64-<version>.zip`
+
+The Windows app is a folder (PyInstaller one-dir), not a single `.exe`. It starts faster and is less likely to be flagged by antivirus software than a self-extracting single file. Users extract the zip and run `LU2MET_NR.exe` inside the folder.
+
+## Automated Builds (GitHub Actions)
+
+The workflow is [`.github/workflows/build-apps.yml`](.github/workflows/build-apps.yml). It builds on three runners: macOS Apple Silicon (`macos-15`), macOS Intel (`macos-15-intel`), and Windows x64 (`windows-latest`).
+
+| Event | Result |
+| --- | --- |
+| Pull request to `main` | Builds and tests every platform; the zips are attached to the run as artifacts. |
+| Push to `main` (merge) | Same; download the zips from the run's **Artifacts** section for 30 days. |
+| Tag `v*` pushed | Same, plus a GitHub Release with the three zips and generated release notes. |
+| Manual run | **Actions → Build apps → Run workflow**, on any branch. |
+
+Builds are versioned `0.0.0-dev.<commit>` unless they come from a tag.
+
+### Publishing a release
 
 ```bash
-cd novasdr_nr_py
-pip install maturin
-maturin develop --release
-cd ..
+git checkout main
+git pull
+git tag v1.1.0
+git push origin v1.1.0
 ```
 
-#### 3. Set Up Python Virtual Environment
+Tags with a suffix, such as `v1.1.0-beta.1`, are published as pre-releases.
+
+Use `vMAJOR.MINOR.PATCH` tags. The version is embedded in the app (window title, macOS `Info.plist`, and `app_version.txt` in the package).
+
+### Update notice in the app
+
+At startup, packaged builds ask GitHub for the latest **stable** release (`/releases/latest`, which excludes drafts and pre-releases). When it is newer than the running version, a banner at the top of the window links to the release. The banner can be dismissed; it stays hidden until a newer version is published. Development builds (`0.0.0-dev.*`) and runs from source do not check. The check runs in the background with a 5-second timeout and is silent when offline.
+
+To preview the banner, set `LU2MET_NR_VERSION` to an older version (for example `LU2MET_NR_VERSION=0.9.0`) when starting the app, once a stable release exists.
+
+The zips in `Download/` are maintained manually and are not touched by the workflow.
+
+## First Launch
+
+**macOS:** the app is not notarized, so Gatekeeper blocks the first launch. Extract the zip, move `LU2MET_NR.app` to Applications, open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**. Alternatively, run:
 
 ```bash
-cd audio_processor
-python3 -m venv venv
-source venv/bin/activate
+xattr -dr com.apple.quarantine /Applications/LU2MET_NR.app
 ```
 
-#### 4. Install Python Dependencies
+Allow microphone access when asked; it is required to read the audio input device.
 
-```bash
-pip install numpy scipy sounddevice PyQt5 pydub pyinstaller
-```
+**Windows:** SmartScreen may warn about an unknown publisher. Select **More info → Run anyway**.
 
-#### 5. Build the macOS Application
+## Runtime Files
 
-```bash
-./build_macos.sh
-```
-
-This creates:
-```
-dist/NovaSDR Audio Processor.app/
-  ├── Contents/
-  │   ├── MacOS/
-  │   │   ├── NovaSDR Audio Processor (executable)
-  │   │   ├── novasdr_nr.so (Rust module)
-  │   │   └── ... (dependencies)
-  │   ├── Info.plist (with microphone permissions)
-  │   └── Frameworks/
-  └── recordings/ (folder for recordings)
-```
-
-### Running the macOS App
-
-**First time:**
-- Right-click on `NovaSDR Audio Processor.app`
-- Select **"Open"**
-- Click **"Open"** in the dialog
-- **Allow microphone access** when prompted
-
-**Subsequent runs:**
-- Double-click the app
-
-### Distribution (macOS)
-
-```bash
-cd dist
-zip -r NovaSDR-macOS.zip "NovaSDR Audio Processor.app"
-```
-
-Share the .zip file. Users:
-1. Extract the .zip
-2. Drag app to Applications folder
-3. Right-click → Open (first time)
-4. Allow microphone access
-
-### macOS Code Signing (Optional)
-
-For distribution outside the App Store:
-
-```bash
-# Ad-hoc signing (already done by build script)
-codesign --force --deep --sign - "dist/NovaSDR Audio Processor.app"
-
-# With Apple Developer certificate
-codesign --force --deep --sign "Developer ID Application: Your Name" "dist/NovaSDR Audio Processor.app"
-
-# Notarization (for Gatekeeper approval)
-xcrun notarytool submit NovaSDR-macOS.zip --apple-id your@email.com --team-id TEAMID --wait
-xcrun stapler staple "NovaSDR Audio Processor.app"
-```
-
----
-
-## Windows Build
-
-### Prerequisites
-
-**Note:** Windows build must be done on a Windows machine.
-
-1. **Windows 10 or Windows 11**
-
-2. **Python 3.10 or higher**
-   - Download from: https://www.python.org/downloads/
-   - **Important:** Check "Add Python to PATH" during installation
-
-3. **Git for Windows**
-   - Download from: https://git-scm.com/download/win
-
-4. **Rust** (for NovaSDR module)
-   - Download from: https://rustup.rs/
-   - Run installer and follow prompts
-   - Restart terminal after installation
-
-5. **Visual Studio Build Tools** (required by Rust)
-   - Download from: https://visualstudio.microsoft.com/downloads/
-   - Install "Desktop development with C++"
-   - Or install full Visual Studio Community
-
-6. **VB-CABLE** (virtual audio device)
-   - Download from: https://vb-audio.com/Cable/
-   - Install and restart
-
-7. **FFmpeg** (optional, for MP3 recording)
-   - Download from: https://www.gyan.dev/ffmpeg/builds/
-   - Extract and add bin folder to PATH
-
-### Build Steps
-
-#### 1. Clone the Repository
-
-```cmd
-git clone https://github.com/tomduca/novasdr-audio-processor.git
-cd novasdr-audio-processor
-```
-
-#### 2. Build the Rust NovaSDR Module
-
-```cmd
-cd novasdr_nr_py
-pip install maturin
-maturin develop --release
-cd ..
-```
-
-#### 3. Set Up Python Virtual Environment
-
-```cmd
-cd audio_processor
-python -m venv venv
-call venv\Scripts\activate.bat
-```
-
-#### 4. Install Python Dependencies
-
-```cmd
-pip install numpy scipy sounddevice PyQt5 pydub pyinstaller
-```
-
-#### 5. Build the Windows Application
-
-```cmd
-build_windows.bat
-```
-
-This creates:
-```
-dist\NovaSDR Audio Processor\
-  ├── NovaSDR Audio Processor.exe
-  ├── novasdr_nr.pyd (Rust module)
-  ├── recordings\ (folder for recordings)
-  └── ... (all dependencies)
-```
-
-### Running the Windows App
-
-**First time:**
-- Double-click `NovaSDR Audio Processor.exe`
-- If Windows Defender SmartScreen appears:
-  - Click "More info"
-  - Click "Run anyway"
-- Allow microphone access when prompted
-
-**Subsequent runs:**
-- Double-click the .exe
-
-### Distribution (Windows)
-
-**Option 1: ZIP Archive**
-```cmd
-cd dist
-# Use Windows Explorer to compress "NovaSDR Audio Processor" folder to .zip
-```
-
-**Option 2: Installer with Inno Setup**
-
-1. Download Inno Setup: https://jrsoftware.org/isdl.php
-2. Create installer script (example below)
-3. Compile installer
-
-Example Inno Setup script (`installer.iss`):
-```ini
-[Setup]
-AppName=NovaSDR Audio Processor
-AppVersion=1.0.0
-DefaultDirName={pf}\NovaSDR Audio Processor
-DefaultGroupName=NovaSDR Audio Processor
-OutputDir=installer
-OutputBaseFilename=NovaSDR-Setup
-
-[Files]
-Source: "dist\NovaSDR Audio Processor\*"; DestDir: "{app}"; Flags: recursesubdirs
-
-[Icons]
-Name: "{group}\NovaSDR Audio Processor"; Filename: "{app}\NovaSDR Audio Processor.exe"
-Name: "{commondesktop}\NovaSDR Audio Processor"; Filename: "{app}\NovaSDR Audio Processor.exe"
-```
-
-### Windows Code Signing (Optional)
-
-For professional distribution:
-
-1. Purchase code signing certificate
-2. Sign the executable:
-   ```cmd
-   signtool sign /f certificate.pfx /p password /t http://timestamp.digicert.com "NovaSDR Audio Processor.exe"
-   ```
-
----
-
-## Common Prerequisites
-
-### Audio Device Setup
-
-#### macOS
-1. Install BlackHole 2ch: `brew install blackhole-2ch`
-2. Open **Audio MIDI Setup** (Applications → Utilities)
-3. Create **Multi-Output Device**:
-   - Include: BlackHole 2ch
-   - Master device: BlackHole 2ch
-4. Set WebSDR to output to Multi-Output Device
-5. In NovaSDR app:
-   - Input: BlackHole 2ch
-   - Output: Your headphones/speakers
-
-#### Windows
-1. Install VB-CABLE from https://vb-audio.com/Cable/
-2. Restart computer
-3. Set WebSDR to output to CABLE Input
-4. In NovaSDR app:
-   - Input: CABLE Output
-   - Output: Your speakers/headphones
-
-### Verify Installation
-
-Test that everything works before building:
-
-```bash
-# macOS
-cd audio_processor
-./run_qt_gui.sh
-
-# Windows
-cd audio_processor
-call venv\Scripts\activate.bat
-python novasdr_gui_qt.py
-```
-
----
-
-## Build Configuration
-
-### Key Build Parameters
-
-Both platforms use these PyInstaller settings:
-
-- **`--windowed`**: No console window
-- **`--onedir`**: Directory mode (not single file)
-  - Better for native libraries (.so, .pyd)
-  - Required for macOS security
-  - Easier to debug
-- **`--add-binary`**: Include NovaSDR Rust module
-- **`--collect-all`**: Collect all sounddevice/scipy files
-- **`--hidden-import`**: Explicitly import required modules
-
-### macOS Specific
-
-- **Info.plist**: Includes `NSMicrophoneUsageDescription` for permissions
-- **Code signing**: Automatic ad-hoc signing after build
-- **Bundle identifier**: `com.lu2met.novasdr`
-
-### Windows Specific
-
-- **`.pyd` extension**: Windows equivalent of `.so`
-- **No Info.plist**: Windows handles permissions differently
-- **SmartScreen**: Users may need to approve first run
-
----
+- Recordings from packaged builds are saved to `Documents/LU2MET NR Filter/Recordings`. When running from source they are saved to `audio_processor/recordings`.
+- The debug log is `lu2met_nr_debug.log` in the user's home folder.
+- MP3 export requires FFmpeg on `PATH`; WAV recording always works.
 
 ## Troubleshooting
 
-### Build Errors
-
-#### "maturin: command not found"
-```bash
-pip install maturin
-```
-
-#### "Rust compiler not found"
-- macOS: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-- Windows: Download from https://rustup.rs/
-
-#### "PyInstaller not found"
-```bash
-pip install pyinstaller
-```
-
-#### macOS: "xcode-select: command not found"
-```bash
-xcode-select --install
-```
-
-#### Windows: "Visual Studio Build Tools required"
-- Install Visual Studio Build Tools with C++ support
-
-### Runtime Errors
-
-#### "NovaSDR module not found"
-- Verify Rust module built successfully: `maturin develop --release`
-- Check that .so/.pyd file is in the app bundle
-
-#### "No audio devices found"
-- macOS: Install BlackHole 2ch
-- Windows: Install VB-CABLE
-- Check system audio settings
-
-#### "Can't record in MP3"
-- Install FFmpeg
-- App will fallback to WAV if FFmpeg unavailable
-
-#### macOS: "App is damaged or incomplete"
-```bash
-xattr -cr "dist/NovaSDR Audio Processor.app"
-codesign --force --deep --sign - "dist/NovaSDR Audio Processor.app"
-```
-
-#### Windows: "DLL load failed"
-- Ensure all dependencies in build
-- Check that .pyd file is present
-
-### Permission Issues
-
-#### macOS: No audio input
-- Check System Settings → Privacy & Security → Microphone
-- Ensure "NovaSDR Audio Processor" is allowed
-- If not listed, delete app and rebuild
-
-#### Windows: Microphone access denied
-- Check Windows Settings → Privacy → Microphone
-- Enable for desktop apps
-
----
-
-## File Sizes
-
-- **macOS .app**: ~150-200 MB (compressed: ~80-100 MB)
-- **Windows folder**: ~150-200 MB (compressed: ~80-100 MB)
-
-Includes:
-- Python runtime
-- NumPy, SciPy libraries
-- PyQt5 framework
-- NovaSDR Rust module
-- All dependencies
-
----
-
-## Development vs Production
-
-### Development (Run from Source)
-
-**macOS:**
-```bash
-cd audio_processor
-./run_qt_gui.sh
-```
-
-**Windows:**
-```cmd
-cd audio_processor
-call venv\Scripts\activate.bat
-python novasdr_gui_qt.py
-```
-
-**Advantages:**
-- Faster iteration
-- Easier debugging
-- See all print statements
-
-### Production (Standalone App)
-
-**Advantages:**
-- No Python installation required
-- Professional appearance
-- Easy distribution
-- Includes all dependencies
-
-**Disadvantages:**
-- Larger file size
-- Slower build process
-- Harder to debug
-
----
-
-## Continuous Integration (CI/CD)
-
-### GitHub Actions Example
-
-```yaml
-name: Build Applications
-
-on: [push, pull_request]
-
-jobs:
-  build-macos:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.14'
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-      - name: Build
-        run: |
-          cd audio_processor
-          ./build_macos.sh
-      - uses: actions/upload-artifact@v3
-        with:
-          name: NovaSDR-macOS
-          path: audio_processor/dist/NovaSDR Audio Processor.app
-
-  build-windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.14'
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-      - name: Build
-        run: |
-          cd audio_processor
-          build_windows.bat
-      - uses: actions/upload-artifact@v3
-        with:
-          name: NovaSDR-Windows
-          path: audio_processor/dist/NovaSDR Audio Processor/
-```
-
----
-
-## Support
-
-For build issues:
-- Check this documentation
-- Review error messages carefully
-- Ensure all prerequisites installed
-- Try building from clean environment
-
-For runtime issues:
-- Check audio device configuration
-- Review application logs: `~/novasdr_debug.log`
-- Verify permissions granted
-
----
-
-## Additional Resources
-
-- **PyInstaller Documentation**: https://pyinstaller.org/
-- **Rust Installation**: https://www.rust-lang.org/tools/install
-- **maturin Documentation**: https://www.maturin.rs/
-- **BlackHole Audio**: https://github.com/ExistentialAudio/BlackHole
-- **VB-CABLE**: https://vb-audio.com/Cable/
-
----
-
-**73 de LU2MET!** 📻
-
-Last updated: 2026-04-02
+- **Self-test fails:** the script prints the end of `lu2met_nr_debug.log`. A failure about NR output means the Rust extension is producing wrongly scaled audio; run the unit tests in `audio_processor/tests` to locate it.
+- **`maturin` fails with `--locked`:** `Cargo.lock` is out of date. Run `cargo update` in `spectral_nr`, test, and commit the lock file.
+- **Wrong Python version:** delete `audio_processor/.build-venv` and run the script again with `PYTHON` pointing to Python 3.12.

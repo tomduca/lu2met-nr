@@ -1,10 +1,10 @@
 #!/bin/bash
-# Run NovaSDR Audio Processor - PyQt5 Native GUI
+# Run LU2MET NR Filter - PyQt5 Native GUI
 
 cd "$(dirname "$0")"
 source venv/bin/activate
 
-echo "Starting NovaSDR Audio Processor (Native GUI)..."
+echo "Starting LU2MET NR Filter (Native GUI)..."
 echo ""
 
-python3 novasdr_gui_qt.py
+python3 lu2met_nr_gui.py

@@ -1,86 +1,87 @@
-# 💾 Persistent Settings
+# Persistent Settings
 
-La aplicación **LU2MET NovaSDR NR Filter** ahora guarda automáticamente todas tus preferencias.
+The **LU2MET NR Filter** automatically saves your preferences.
 
-## ✅ Qué se Guarda
+## Saved Settings
 
-Cuando cerrás la aplicación, se guardan automáticamente:
+The following settings are saved when the application closes:
 
-- **Dispositivos de audio** (Input/Output seleccionados)
-- **Modo** (SSB o CW)
+- **Audio devices** (selected input and output)
+- **Mode** (SSB or CW)
 - **Preset** (Moderate, Aggressive, Ultra, Extreme)
-- **Input Gain** (1-100%)
-- **Output Volume** (10-400%)
-- **Bypass** (activado/desactivado)
+- **DSP input trim** (1-100% slider range)
+- **Master output** (10-400% slider range)
+- **Bypass** (enabled/disabled)
 
-## 📍 Dónde se Guardan
+## Storage Locations
 
 ### Windows
-Los settings se guardan en el **Registro de Windows**:
+Settings are stored in the **Windows Registry**:
 ```
-HKEY_CURRENT_USER\Software\LU2MET\NovaSDR_NR_Filter
+HKEY_CURRENT_USER\Software\LU2MET\LU2MET_NR_Filter
 ```
 
-Podés ver/editar con `regedit` si es necesario.
+You can view or edit them with `regedit` if needed.
 
 ### macOS
-Los settings se guardan en:
+Settings are stored in:
 ```
-~/Library/Preferences/com.LU2MET.NovaSDR_NR_Filter.plist
+~/Library/Preferences/com.lu2met.LU2MET_NR_Filter.plist
 ```
 
 ### Linux
-Los settings se guardan en:
+Settings are stored in:
 ```
-~/.config/LU2MET/NovaSDR_NR_Filter.conf
+~/.config/LU2MET/LU2MET_NR_Filter.conf
 ```
 
-## 🔄 Cómo Funciona
+## Behavior
 
-1. **Al abrir la app:** Se cargan automáticamente los últimos settings usados
-2. **Al cerrar la app:** Se guardan automáticamente todos los settings actuales
-3. **Primera vez:** Usa valores por defecto (Extreme preset, 5% input gain, 100% output volume)
+1. **On launch:** The last saved settings are loaded automatically.
+2. **On close:** The current settings are saved automatically.
+3. **Earlier versions:** Releases before the rename stored settings under `NovaSDR_NR_Filter` instead of `LU2MET_NR_Filter`. On the first launch of a newer version, those settings are copied to the new location automatically; the old entry is left in place and can be deleted.
+4. **First launch:** Default values are used (Extreme preset, approximately -26 dB DSP input trim, 0 dB master output).
 
-## 🗑️ Resetear Settings
+## Reset Settings
 
-Si querés volver a los valores por defecto:
+To restore the defaults, remove the settings for your platform:
 
 ### Windows
 ```powershell
-reg delete "HKEY_CURRENT_USER\Software\LU2MET\NovaSDR_NR_Filter" /f
+reg delete "HKEY_CURRENT_USER\Software\LU2MET\LU2MET_NR_Filter" /f
 ```
 
 ### macOS
 ```bash
-rm ~/Library/Preferences/com.LU2MET.NovaSDR_NR_Filter.plist
+rm ~/Library/Preferences/com.lu2met.LU2MET_NR_Filter.plist
 ```
 
 ### Linux
 ```bash
-rm ~/.config/LU2MET/NovaSDR_NR_Filter.conf
+rm ~/.config/LU2MET/LU2MET_NR_Filter.conf
 ```
 
-## 📝 Notas
+## Notes
 
-- Los settings son **por usuario** (cada usuario de Windows/macOS tiene sus propios settings)
-- Los settings **persisten** entre reinstalaciones de la app
-- Si cambiás de dispositivos de audio, la app intentará usar los últimos que tenías configurados (si existen)
-- Si un dispositivo guardado no existe, la app usa el dispositivo por defecto del sistema
+- Settings are **per user**; each Windows or macOS account has its own values.
+- Settings **persist** across application reinstalls.
+- The application attempts to reuse the previously selected devices if they are available.
+- If a saved device is unavailable, select another device in the application.
 
-## 🔧 Valores por Defecto
+## Default Values
 
-Si no hay settings guardados o los reseteás:
+When no settings have been saved, or after resetting:
 
 ```
 Mode: SSB
 Preset: Extreme
-Input Gain: 5%
-Output Volume: 100%
+DSP Input Trim: approximately -26 dB
+Master Output: 0 dB
 Bypass: Off
-Input Device: Sistema por defecto
-Output Device: Sistema por defecto
+Input Device: System default
+Output Device: System default
 ```
 
 ---
 
-**Implementado con:** `QSettings` de PyQt5 (método estándar multiplataforma)
+Settings are managed with the cross-platform `QSettings` API from PyQt5.

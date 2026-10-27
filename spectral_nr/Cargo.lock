@@ -68,7 +68,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "novasdr_nr_py"
+name = "spectral_nr"
 version = "0.1.0"
 dependencies = [
  "numpy",
