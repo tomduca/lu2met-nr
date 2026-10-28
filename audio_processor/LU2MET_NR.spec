@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller spec for the LU2MET NR Filter desktop app (macOS and Windows).
-# Build with build_macos.sh or build_windows.ps1; they set APP_VERSION.
+# PyInstaller spec for the LU2MET NR Filter desktop app (macOS, Windows, Linux).
+# Build with build_macos.sh, build_windows.ps1 or build_linux.sh; they set APP_VERSION.
 import os
 import sys
 
@@ -9,6 +9,7 @@ from PyInstaller.utils.hooks import collect_all, copy_metadata
 APP_NAME = 'LU2MET_NR'
 APP_VERSION = os.environ.get('APP_VERSION', '0.0.0')
 IS_MACOS = sys.platform == 'darwin'
+IS_WINDOWS = sys.platform == 'win32'
 
 datas, binaries, hiddenimports = [], [], []
 for package in ('spectral_nr', 'sounddevice'):
@@ -48,7 +49,8 @@ exe = EXE(
     name=APP_NAME,
     console=False,
     upx=False,
-    icon='app_icon.icns' if IS_MACOS else 'app_icon.ico',
+    # Linux executables have no embedded icon.
+    icon='app_icon.icns' if IS_MACOS else 'app_icon.ico' if IS_WINDOWS else None,
 )
 coll = COLLECT(exe, a.binaries, a.datas, upx=False, name=APP_NAME)
 

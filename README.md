@@ -1,6 +1,6 @@
 # LU2MET NR Filter
 
-A local, live HF audio processor with a native PyQt5 desktop interface, distributed as packaged apps for macOS and Windows. Audio capture and playback use `sounddevice`; spectral noise reduction is provided by a Rust extension.
+A local, live HF audio processor with a native PyQt5 desktop interface, distributed as packaged apps for macOS, Windows and Linux (experimental). Audio capture and playback use `sounddevice`; spectral noise reduction is provided by a Rust extension.
 
 <p align="center">
   <img src="docs/screenshot.png" alt="LU2MET NR Filter main window on macOS" width="480">
