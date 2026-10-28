@@ -37,6 +37,10 @@ jobs:
             os: macos-15-intel
           - name: windows-x64
             os: windows-latest
+          # The oldest supported Ubuntu, so the app runs on distributions
+          # with glibc 2.35 or newer.
+          - name: linux-x86_64
+            os: ubuntu-22.04
 
     steps:
       - uses: actions/checkout@v4
@@ -68,6 +72,19 @@ jobs:
         env:
           PYTHON: python
         run: ./audio_processor/build_macos.sh
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libportaudio2 libgl1 libegl1 libfontconfig1 libxkbcommon0 libdbus-1-3 zip
+
+      - name: Build Linux app
+        if: runner.os == 'Linux'
+        env:
+          PYTHON: python
+        run: ./audio_processor/build_linux.sh
 
       - name: Build Windows app
         if: runner.os == 'Windows'
