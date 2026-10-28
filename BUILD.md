@@ -100,8 +100,6 @@ At startup, packaged builds ask GitHub for the latest **stable** release (`/rele
 
 To preview the banner, set `LU2MET_NR_VERSION` to an older version (for example `LU2MET_NR_VERSION=0.9.0`) when starting the app, once a stable release exists.
 
-The zips in `Download/` are maintained manually and are not touched by the workflow.
-
 ## First Launch
 
 **macOS:** the app is not notarized, so Gatekeeper blocks the first launch. Extract the zip, move `LU2MET_NR.app` to Applications, open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**. Alternatively, run:
