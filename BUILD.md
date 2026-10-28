@@ -90,6 +90,8 @@ git push origin v1.1.0
 
 Tags with a suffix, such as `v1.1.0-beta.1`, are published as pre-releases.
 
+To add a platform to an existing release without a new version, run the workflow manually on `main` with **version** set to that release (for example `1.3.0`), download the zip from the run's artifacts, and attach it to the release. Only do this when the app code has not changed since the release tag.
+
 Use `vMAJOR.MINOR.PATCH` tags. The version is embedded in the app (window title, macOS `Info.plist`, and `app_version.txt` in the package).
 
 ### Update notice in the app

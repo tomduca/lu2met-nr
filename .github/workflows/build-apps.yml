@@ -3,7 +3,8 @@ name: Build apps
 # - Pull requests to main: build and test on every platform (catches breakage).
 # - Push to main (merge): same, and keep the zips as workflow artifacts.
 # - Tag v*: same, and publish a GitHub Release with the zips.
-# - Manual run from the Actions tab on any branch.
+# - Manual run from the Actions tab on any branch. The optional version input
+#   builds zips for an existing release (e.g. a platform added later).
 # - Changes that only touch Markdown or docs/ skip the build (tags always build).
 on:
   pull_request:
@@ -14,6 +15,11 @@ on:
     tags: ['v*']
     paths-ignore: ['**.md', 'docs/**']
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to embed (e.g. 1.3.0); empty for a dev build'
+        required: false
+        default: ''
 
 concurrency:
   group: build-${{ github.ref }}
@@ -47,8 +53,12 @@ jobs:
 
       - name: Set version
         shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+          if [[ -n "$INPUT_VERSION" ]]; then
+            echo "APP_VERSION=${INPUT_VERSION#v}" >> "$GITHUB_ENV"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             echo "APP_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
           else
             echo "APP_VERSION=0.0.0-dev.${GITHUB_SHA::7}" >> "$GITHUB_ENV"
