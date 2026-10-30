@@ -6,8 +6,8 @@ LU2MET NR Filter provides live HF audio processing through a Python audio-I/O la
 
 1. `sounddevice` captures audio at 48 kHz.
 2. Input with one or two channels is converted to mono.
-3. In filtered mode, the selected SSB/CW band-pass runs before the Rust spectral noise-reduction filter.
-4. Master output gain and a soft limiter apply in both bypass and filtered modes.
+3. The selected SSB/CW band-pass runs, followed by the enabled Rust noise-reduction filters (Spectral MMSE, then OM-LSA).
+4. Master output gain and a soft limiter apply.
 5. Mono audio is copied to every selected output channel.
 
 The configured callback block is 2048 frames, about 42.7 ms at 48 kHz. End-to-end latency depends on device and host buffers.

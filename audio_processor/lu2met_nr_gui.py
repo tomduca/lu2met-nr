@@ -16,7 +16,8 @@ import logging
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QLabel, QComboBox, QPushButton, 
                              QTextEdit, QRadioButton, QButtonGroup, QCheckBox,
-                             QGroupBox, QMessageBox, QSlider, QScrollArea, QProgressBar)
+                             QGroupBox, QMessageBox, QSlider, QScrollArea, QProgressBar,
+                             QFrame)
 from PyQt5.QtCore import QObject, QThread, pyqtSignal, Qt, QTimer, QSettings
 from PyQt5.QtGui import QFont, QPalette, QColor
 from audio_pipeline import (
@@ -144,7 +145,6 @@ class AudioProcessor(QThread):
     def __init__(self):
         super().__init__()
         self.running = False
-        self.bypass = False
         self.tx_mute = True
         self.tx_gate = TxGate(SAMPLE_RATE)
         self.recording = False
@@ -167,7 +167,6 @@ class AudioProcessor(QThread):
         self.bandpass_filter = None
         self.zi_bandpass = None
         self.block_config = BlockConfig({
-            'bypass': False,
             'tx_mute': True,
             'input_gain': self.input_gain,
             'output_volume': self.output_volume,
@@ -219,11 +218,11 @@ class AudioProcessor(QThread):
                 self.tx_gate.reset()
             freeze_nr, tx_envelope = False, None
 
-        if config['bypass'] or not NR_AVAILABLE or config['nr'] is None:
-            # Bypass disables processing but retains the master output stage.
+        if not NR_AVAILABLE or config['nr'] is None:
+            # Without the extension, pass the audio through to the master output stage.
             filtered_audio = audio_data
             if self.callback_count == 1:
-                logging.info("Audio callback: BYPASS mode (transparent pass-through)")
+                logging.info("Audio callback: pass-through (noise reduction unavailable)")
         else:
             # Apply input gain to prevent saturation
             audio_data = audio_data * config['input_gain']
@@ -302,7 +301,7 @@ class AudioProcessor(QThread):
                 traceback.print_exc()
                 self.log_signal.emit(f"ERROR: Failed to initialize noise reduction: {e}")
         else:
-            self.log_signal.emit("WARNING: Noise reduction module not available - running in bypass mode")
+            self.log_signal.emit("WARNING: Noise reduction module not available - passing audio through")
         
         # Query device info to get correct number of channels
         try:
@@ -339,7 +338,6 @@ class AudioProcessor(QThread):
         try:
             self.nr2 = self.create_nr2() if self.nr2_enabled else None
             self.block_config.schedule(
-                bypass=self.bypass,
                 input_gain=self.input_gain,
                 output_volume=self.output_volume,
                 bandpass_filter=self.bandpass_filter,
@@ -657,29 +655,45 @@ class LU2METNRWindow(QMainWindow):
             self.preset_group.addButton(radio)
             preset_buttons_layout.addWidget(radio)
         
-        filters_row = QHBoxLayout()
-        self.nr_check = QCheckBox('LU2MET NR')
-        self.nr_check.setToolTip('Spectral noise reduction tuned by the presets above')
+        # With no filter checked, only the band-pass filter is applied.
+        self.nr_check = QCheckBox('Spectral MMSE (Schmitt/Romanin)')
+        self.nr_check.setToolTip(
+            'Spectral noise reduction after Schmitt et al. (2002) and Romanin et al. (2009), '
+            'tuned by the presets below'
+        )
         self.nr_check.setChecked(True)
         self.nr_check.stateChanged.connect(self.on_filters_change)
-        filters_row.addWidget(self.nr_check)
-        self.nr2_check = QCheckBox('NR2 (OM-LSA)')
-        self.nr2_check.setToolTip(
-            'Second noise reduction (OM-LSA with IMCRA noise tracking), no settings. '
-            'With both checked, NR2 runs after LU2MET NR. Adds about 32 ms of delay '
-            'and needs about 2.5 s to learn the noise.'
-        )
-        self.nr2_check.stateChanged.connect(self.on_filters_change)
-        filters_row.addWidget(self.nr2_check)
-        filters_row.addStretch(1)
+        preset_layout.addWidget(self.nr_check)
 
-        preset_layout.addLayout(filters_row)
-        preset_layout.addLayout(preset_buttons_layout)
+        # The presets belong to the first filter: indent them under it with a guide line.
+        self.preset_frame = QFrame()
+        preset_frame_layout = QVBoxLayout(self.preset_frame)
+        preset_frame_layout.setContentsMargins(12, 0, 0, 0)
+        preset_frame_layout.addLayout(preset_buttons_layout)
         
         self.preset_info = QLabel()
-        self.preset_info.setStyleSheet('color: #6b7280; font-size: 11px;')
-        preset_layout.addWidget(self.preset_info)
+        self.preset_info.setStyleSheet(
+            'QLabel { color: #6b7280; font-size: 11px; } QLabel:disabled { color: #c4c7cc; }'
+        )
+        preset_frame_layout.addWidget(self.preset_info)
         self.update_preset_info()
+        guide = QFrame()
+        guide.setFixedWidth(2)
+        guide.setStyleSheet('background-color: #9ca3af;')
+        preset_row = QHBoxLayout()
+        preset_row.setContentsMargins(9, 0, 0, 4)
+        preset_row.addWidget(guide)
+        preset_row.addWidget(self.preset_frame, 1)
+        preset_layout.addLayout(preset_row)
+
+        self.nr2_check = QCheckBox('OM-LSA (Cohen)')
+        self.nr2_check.setToolTip(
+            'OM-LSA with IMCRA noise tracking, after I. Cohen (2001, 2003). No settings. '
+            'With both filters checked it runs after the first one. Adds about 32 ms of '
+            'delay and needs about 2.5 s to learn the noise.'
+        )
+        self.nr2_check.stateChanged.connect(self.on_filters_change)
+        preset_layout.addWidget(self.nr2_check)
         
         preset_group.setLayout(preset_layout)
         layout.addWidget(preset_group)
@@ -732,14 +746,11 @@ class LU2METNRWindow(QMainWindow):
         
         control_layout.addLayout(volume_layout)
         
-        volume_info = QLabel('Master level applies to bypass and filtered audio; output peaks are limited.')
+        volume_info = QLabel('Master level applies to all audio; output peaks are limited.')
         volume_info.setStyleSheet('color: #3b82f6; font-size: 10px; padding: 2px;')
         control_layout.addWidget(volume_info)
         
         switches_row = QHBoxLayout()
-        self.bypass_check = QCheckBox('Bypass (pass-through)')
-        self.bypass_check.stateChanged.connect(self.on_bypass_change)
-        switches_row.addWidget(self.bypass_check)
         self.tx_mute_check = QCheckBox('Mute during TX')
         self.tx_mute_check.setToolTip(
             'Mute the output while the receiver audio drops during transmit, '
@@ -910,11 +921,9 @@ class LU2METNRWindow(QMainWindow):
     def on_filters_change(self, _state=None):
         nr_enabled = self.nr_check.isChecked()
         nr2_enabled = self.nr2_check.isChecked()
-        for button in self.preset_group.buttons():
-            button.setEnabled(nr_enabled)
-        self.preset_info.setEnabled(nr_enabled)
+        self.preset_frame.setEnabled(nr_enabled)
         self.processor.set_filters(nr_enabled, nr2_enabled)
-        names = [name for name, on in (('LU2MET NR', nr_enabled), ('NR2', nr2_enabled)) if on]
+        names = [name for name, on in (('Spectral MMSE', nr_enabled), ('OM-LSA', nr2_enabled)) if on]
         self.add_log(f"Filters: {' + '.join(names) if names else 'band-pass only'}")
 
     def on_preset_change(self, preset):
@@ -957,12 +966,6 @@ class LU2METNRWindow(QMainWindow):
         self.processor.block_config.schedule(tx_mute=self.processor.tx_mute)
         self.add_log(f"Mute during TX: {'on' if self.processor.tx_mute else 'off'}")
 
-    def on_bypass_change(self, state):
-        self.processor.bypass = (state == Qt.Checked)
-        self.processor.block_config.schedule(bypass=self.processor.bypass)
-        status = "BYPASSED" if self.processor.bypass else "ACTIVE"
-        self.add_log(f"Processing {status}")
-    
     def start_processing(self):
         input_idx = self.input_combo.currentData()
         output_idx = self.output_combo.currentData()
@@ -1064,9 +1067,12 @@ class LU2METNRWindow(QMainWindow):
             output_volume = int(self.settings.value('audio/output_volume', 100))
             self.volume_slider.setValue(output_volume)
             
-            # Load bypass state
-            bypass = self.settings.value('audio/bypass', False, type=bool)
-            self.bypass_check.setChecked(bypass)
+            if self.settings.contains('audio/bypass'):
+                # Bypass was removed; no filter checked is the closest to it.
+                if self.settings.value('audio/bypass', False, type=bool):
+                    self.settings.setValue('audio/nr_enabled', False)
+                    self.settings.setValue('audio/nr2_enabled', False)
+                self.settings.remove('audio/bypass')
             self.tx_mute_check.setChecked(self.settings.value('audio/tx_mute', True, type=bool))
             self.nr_check.setChecked(self.settings.value('audio/nr_enabled', True, type=bool))
             self.nr2_check.setChecked(self.settings.value('audio/nr2_enabled', False, type=bool))
@@ -1110,8 +1116,6 @@ class LU2METNRWindow(QMainWindow):
             # Save output volume
             self.settings.setValue('audio/output_volume', self.volume_slider.value())
             
-            # Save bypass state
-            self.settings.setValue('audio/bypass', self.bypass_check.isChecked())
             self.settings.setValue('audio/tx_mute', self.tx_mute_check.isChecked())
             self.settings.setValue('audio/nr_enabled', self.nr_check.isChecked())
             self.settings.setValue('audio/nr2_enabled', self.nr2_check.isChecked())

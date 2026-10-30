@@ -18,9 +18,8 @@ See [INSTALL.md](INSTALL.md) for development setup, [BUILD.md](BUILD.md) for pla
 
 ## Audio Path
 
-- Audio is captured at 48 kHz and normalized to mono before bypass or processing. Mono is copied to every selected output channel.
-- The DSP input trim affects only the filtered path. Master Output applies to both bypass and filtered audio.
-- The filtered path applies an SSB or CW band-pass filter, followed by spectral noise reduction.
+- Audio is captured at 48 kHz and normalized to mono before processing. Mono is copied to every selected output channel.
+- The DSP input trim and an SSB or CW band-pass filter always apply, followed by the enabled noise-reduction filters: Spectral MMSE, OM-LSA, both in series, or neither. Master Output applies after them.
 - A shared soft limiter controls output peaks. It cannot repair clipping that occurred before the application received the signal.
 - Live meters show recent RMS and a decaying peak hold. Input clipping detection also catches flat-topped peaks below 0 dBFS, which occur when an interface clips at its ADC and then scales the signal down. Input clipping and limiter warnings remain latched until the stream is restarted. See [Input Level Calibration](audio_processor/USAGE.md#input-level-calibration) for setting the receiver level.
 - Transmit muting detects the near-silent receive line during TX, mutes the output, freezes the noise-reduction estimate, and fades back in afterwards. See [Transmit Muting](audio_processor/USAGE.md#transmit-muting).

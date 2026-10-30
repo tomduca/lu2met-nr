@@ -9,10 +9,9 @@ The following settings are saved when the application closes:
 - **Audio devices** (selected input and output)
 - **Mode** (SSB or CW)
 - **Preset** (Moderate, Aggressive, Ultra, Extreme)
-- **Noise reduction filters** (LU2MET NR and NR2, each enabled/disabled)
+- **Noise reduction filters** (Spectral MMSE and OM-LSA, each enabled/disabled; settings from versions with a Bypass switch turn both off if Bypass was on)
 - **DSP input trim** (1-100% slider range)
 - **Master output** (10-400% slider range)
-- **Bypass** (enabled/disabled)
 - **Mute during TX** (enabled/disabled)
 
 ## Storage Locations
@@ -79,7 +78,7 @@ Mode: SSB
 Preset: Extreme
 DSP Input Trim: approximately -26 dB
 Master Output: 0 dB
-Bypass: Off
+Filters: Spectral MMSE on, OM-LSA off
 Input Device: System default
 Output Device: System default
 ```
