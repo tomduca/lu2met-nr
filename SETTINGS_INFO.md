@@ -9,6 +9,7 @@ The following settings are saved when the application closes:
 - **Audio devices** (selected input and output)
 - **Mode** (SSB or CW)
 - **Preset** (Moderate, Aggressive, Ultra, Extreme)
+- **Noise reduction filters** (LU2MET NR and NR2, each enabled/disabled)
 - **DSP input trim** (1-100% slider range)
 - **Master output** (10-400% slider range)
 - **Bypass** (enabled/disabled)

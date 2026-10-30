@@ -67,11 +67,21 @@ Choose the input and output with the **same tag**. If the tags differ, Start sho
 ## Controls
 
 - **Mode:** SSB uses the 300-2700 Hz band-pass; CW uses 600-900 Hz.
-- **Preset:** Selects the spectral noise-reduction parameters for the chosen mode.
+- **LU2MET NR / NR2 (OM-LSA):** the two noise-reduction filters. Either, both, or neither can be enabled; see [Noise Reduction Filters](#noise-reduction-filters).
+- **Preset:** Selects the parameters of LU2MET NR for the chosen mode. Disabled while LU2MET NR is off.
 - **DSP Input Trim:** Adjusts the level sent into the filter. It only affects the filtered path and cannot undo clipping that already occurred at the audio device or ADC.
 - **Master Output:** Adjusts listening level in both bypass and filtered modes. A soft limiter controls output peaks.
 - **Bypass:** Skips band-pass and spectral noise reduction while retaining the master output stage.
 - **Mute during TX:** Mutes the output while you transmit and fades it back in afterwards (enabled by default; saved with your settings). The **TX** indicator lights while the output is muted or fading in.
+
+## Noise Reduction Filters
+
+- **LU2MET NR** (default): spectral noise reduction with four presets per mode.
+- **NR2 (OM-LSA)** (experimental): optimally modified log-spectral amplitude estimator with IMCRA noise tracking, written from the published papers by I. Cohen. It has no settings. It follows changing noise (QRN, local noise) more closely, adds about 32 ms of delay, and needs about 2.5 s to learn the noise after it is enabled or the stream starts.
+- **Both:** NR2 runs after LU2MET NR. Two filters of the same family in series usually remove more speech along with the noise, so compare it against each filter alone.
+- **Neither:** only the band-pass filter is applied.
+
+NR2 alone is lowered 5 dB so that switching filters does not change the listening level much.
 
 ## Transmit Muting
 

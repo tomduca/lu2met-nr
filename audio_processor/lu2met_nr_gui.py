@@ -127,6 +127,10 @@ PRESETS_CW = {
     'extreme': {'gain': 1.0/16384.0, 'alpha': 0.995, 'asnr': 1.0, 'post_gain': 18.0}
 }
 
+# NR2 alone keeps about the level of the presets, which lower it 3-8 dB,
+# so switching filters does not sound like a volume change.
+NR2_ONLY_GAIN = 10 ** (-5 / 20)
+
 BANDPASS_CONFIG = {
     'SSB': {'low': 300, 'high': 2700},
     'CW': {'low': 600, 'high': 900}
@@ -150,6 +154,9 @@ class AudioProcessor(QThread):
         self.output_device = None
         self.stream = None
         self.nr = None
+        self.nr_enabled = True
+        self.nr2 = None
+        self.nr2_enabled = False
         self.post_gain = 14.0
         self.input_gain = input_trim_slider_to_gain(36)
         self.output_volume = 1.0  # Default output volume (100%)
@@ -167,6 +174,8 @@ class AudioProcessor(QThread):
             'bandpass_filter': None,
             'zi_bandpass': None,
             'nr': None,
+            'nr_enabled': True,
+            'nr2': None,
             'post_gain': self.post_gain,
         })
         self.recorder = None
@@ -230,8 +239,13 @@ class AudioProcessor(QThread):
                     filtered_audio = audio_data
 
                 if not freeze_nr:
-                    filtered_audio = config['nr'].process(filtered_audio.astype(np.float32))
-                    filtered_audio = filtered_audio * config['post_gain']
+                    if config['nr_enabled']:
+                        filtered_audio = config['nr'].process(filtered_audio.astype(np.float32))
+                        filtered_audio = filtered_audio * config['post_gain']
+                    if config['nr2'] is not None:
+                        filtered_audio = config['nr2'].process(filtered_audio.astype(np.float32))
+                        if not config['nr_enabled']:
+                            filtered_audio = filtered_audio * NR2_ONLY_GAIN
 
                 if self.callback_count == 1:
                     logging.info(f"Audio callback: PROCESSING mode (input level: {np.abs(audio_data).max():.4f}, output level: {np.abs(filtered_audio).max():.4f})")
@@ -323,6 +337,7 @@ class AudioProcessor(QThread):
             raise
         
         try:
+            self.nr2 = self.create_nr2() if self.nr2_enabled else None
             self.block_config.schedule(
                 bypass=self.bypass,
                 input_gain=self.input_gain,
@@ -330,6 +345,8 @@ class AudioProcessor(QThread):
                 bandpass_filter=self.bandpass_filter,
                 zi_bandpass=self.zi_bandpass,
                 nr=self.nr,
+                nr_enabled=self.nr_enabled,
+                nr2=self.nr2,
                 post_gain=self.post_gain,
             )
             self.stream.start()
@@ -363,6 +380,23 @@ class AudioProcessor(QThread):
         self.input_clipping_seen = False
         self.limiter_active_seen = False
     
+    @staticmethod
+    def create_nr2():
+        if not NR_AVAILABLE or not hasattr(spectral_nr, 'OmlsaNoiseReduction'):
+            return None
+        return spectral_nr.OmlsaNoiseReduction(SAMPLE_RATE)
+
+    def set_filters(self, nr_enabled, nr2_enabled):
+        """Enable the LU2MET filter and NR2 independently; both run in series."""
+        self.nr_enabled = nr_enabled
+        if nr2_enabled and (self.nr2 is None or not self.nr2_enabled):
+            # A fresh NR2 re-learns the noise in about 2.5 s.
+            self.nr2 = self.create_nr2() if self.running else None
+        elif not nr2_enabled:
+            self.nr2 = None
+        self.nr2_enabled = nr2_enabled
+        self.block_config.schedule(nr_enabled=nr_enabled, nr2=self.nr2)
+
     def set_mode(self, mode):
         self.mode = mode
         self.bandpass_filter, self.zi_bandpass = self.create_bandpass_filter(mode)
@@ -608,7 +642,7 @@ class LU2METNRWindow(QMainWindow):
         layout.addWidget(mode_group)
         
         # Presets
-        preset_group = QGroupBox('🎛️ Noise Reduction Preset')
+        preset_group = QGroupBox('🎛️ Noise Reduction')
         preset_layout = QVBoxLayout()
         
         preset_buttons_layout = QHBoxLayout()
@@ -623,6 +657,23 @@ class LU2METNRWindow(QMainWindow):
             self.preset_group.addButton(radio)
             preset_buttons_layout.addWidget(radio)
         
+        filters_row = QHBoxLayout()
+        self.nr_check = QCheckBox('LU2MET NR')
+        self.nr_check.setToolTip('Spectral noise reduction tuned by the presets above')
+        self.nr_check.setChecked(True)
+        self.nr_check.stateChanged.connect(self.on_filters_change)
+        filters_row.addWidget(self.nr_check)
+        self.nr2_check = QCheckBox('NR2 (OM-LSA)')
+        self.nr2_check.setToolTip(
+            'Second noise reduction (OM-LSA with IMCRA noise tracking), no settings. '
+            'With both checked, NR2 runs after LU2MET NR. Adds about 32 ms of delay '
+            'and needs about 2.5 s to learn the noise.'
+        )
+        self.nr2_check.stateChanged.connect(self.on_filters_change)
+        filters_row.addWidget(self.nr2_check)
+        filters_row.addStretch(1)
+
+        preset_layout.addLayout(filters_row)
         preset_layout.addLayout(preset_buttons_layout)
         
         self.preset_info = QLabel()
@@ -856,6 +907,16 @@ class LU2METNRWindow(QMainWindow):
             self.processor.set_mode(mode)
         self.update_preset_info()
     
+    def on_filters_change(self, _state=None):
+        nr_enabled = self.nr_check.isChecked()
+        nr2_enabled = self.nr2_check.isChecked()
+        for button in self.preset_group.buttons():
+            button.setEnabled(nr_enabled)
+        self.preset_info.setEnabled(nr_enabled)
+        self.processor.set_filters(nr_enabled, nr2_enabled)
+        names = [name for name, on in (('LU2MET NR', nr_enabled), ('NR2', nr2_enabled)) if on]
+        self.add_log(f"Filters: {' + '.join(names) if names else 'band-pass only'}")
+
     def on_preset_change(self, preset):
         if self.processor.running:
             self.processor.set_preset(preset)
@@ -1007,6 +1068,8 @@ class LU2METNRWindow(QMainWindow):
             bypass = self.settings.value('audio/bypass', False, type=bool)
             self.bypass_check.setChecked(bypass)
             self.tx_mute_check.setChecked(self.settings.value('audio/tx_mute', True, type=bool))
+            self.nr_check.setChecked(self.settings.value('audio/nr_enabled', True, type=bool))
+            self.nr2_check.setChecked(self.settings.value('audio/nr2_enabled', False, type=bool))
             
             # Load input/output devices (by name)
             input_device = self.settings.value('audio/input_device', '')
@@ -1050,6 +1113,8 @@ class LU2METNRWindow(QMainWindow):
             # Save bypass state
             self.settings.setValue('audio/bypass', self.bypass_check.isChecked())
             self.settings.setValue('audio/tx_mute', self.tx_mute_check.isChecked())
+            self.settings.setValue('audio/nr_enabled', self.nr_check.isChecked())
+            self.settings.setValue('audio/nr2_enabled', self.nr2_check.isChecked())
             
             # Sync to disk
             self.settings.sync()
@@ -1092,6 +1157,11 @@ def self_test():
         # The extreme preset scales by 1/16384; unfiltered samples would be ~0.1+.
         if output.shape != block.shape or not 0.0 < peak < 0.01:
             raise RuntimeError(f'Unexpected NR output: shape={output.shape} peak={peak}')
+        logging.info('Self-test: NR2')
+        nr2 = spectral_nr.OmlsaNoiseReduction(SAMPLE_RATE)
+        output2 = nr2.process(filtered.astype(np.float32))
+        if output2.shape != block.shape or not np.all(np.isfinite(output2)):
+            raise RuntimeError(f'Unexpected NR2 output: shape={output2.shape}')
         logging.info(f'Self-test: version {APP_VERSION}, TLS certificates')
         if getattr(sys, 'frozen', False):
             if APP_VERSION == 'dev':
