@@ -15,7 +15,7 @@ From this directory:
 - Input is captured at 48 kHz and converted to mono. A multichannel device is downmixed before processing.
 - The DSP input trim is applied only to the filtered path.
 - SSB or CW band-pass filtering (SciPy) is followed by spectral noise reduction in the Rust extension.
-- The master output level and soft limiter are shared by bypass and filtered audio.
+- The master output level and soft limiter apply to all output audio.
 - Mono output is copied to every selected output channel.
 - The meters show recent RMS and a decaying peak hold. Input-clipping and soft-limiter warnings remain latched until the stream is restarted.
 - Recording data is sent to a bounded queue and written by a background thread.

@@ -67,11 +67,20 @@ Choose the input and output with the **same tag**. If the tags differ, Start sho
 ## Controls
 
 - **Mode:** SSB uses the 300-2700 Hz band-pass; CW uses 600-900 Hz.
-- **Preset:** Selects the spectral noise-reduction parameters for the chosen mode.
-- **DSP Input Trim:** Adjusts the level sent into the filter. It only affects the filtered path and cannot undo clipping that already occurred at the audio device or ADC.
-- **Master Output:** Adjusts listening level in both bypass and filtered modes. A soft limiter controls output peaks.
-- **Bypass:** Skips band-pass and spectral noise reduction while retaining the master output stage.
+- **Spectral MMSE (Schmitt/Romanin) / OM-LSA (Cohen):** the two noise-reduction filters. Either, both, or neither can be enabled; see [Noise Reduction Filters](#noise-reduction-filters).
+- **Preset:** Selects the parameters of Spectral MMSE for the chosen mode. The presets are indented under that filter and disabled while it is off.
+- **DSP Input Trim:** Adjusts the level sent into the band-pass and filters. It cannot undo clipping that already occurred at the audio device or ADC.
+- **Master Output:** Adjusts the listening level. A soft limiter controls output peaks.
 - **Mute during TX:** Mutes the output while you transmit and fades it back in afterwards (enabled by default; saved with your settings). The **TX** indicator lights while the output is muted or fading in.
+
+## Noise Reduction Filters
+
+- **Spectral MMSE (Schmitt/Romanin)** (default): MMSE spectral gain after Schmitt et al. (2002) and Romanin et al. (2009), with four presets per mode.
+- **OM-LSA (Cohen):** optimally modified log-spectral amplitude estimator with IMCRA noise tracking, written from the published papers by I. Cohen (2001, 2003). It has no settings. It follows changing noise (QRN, local noise) more closely, adds about 32 ms of delay, and needs about 2.5 s to learn the noise after it is enabled or the stream starts.
+- **Both:** OM-LSA runs after Spectral MMSE. Depending on signal strength and local noise, the combination can work better or worse than either filter alone; compare by ear.
+- **Neither:** only the SSB or CW band-pass filter is applied. This sounds closest to the receiver's own audio, because the band-pass removes hum, hiss and distortion products outside the voice band, as the receiver's own filter does.
+
+OM-LSA alone is lowered 5 dB so that switching filters does not change the listening level much.
 
 ## Transmit Muting
 
@@ -91,10 +100,10 @@ The CLIP indicator detects both full-scale samples and flat-topped runs at the c
 
 To set the level:
 
-1. Enable **Bypass** and set **Master Output** to 0 dB.
+1. Uncheck both noise-reduction filters and set **DSP Input Trim** and **Master Output** to 0 dB. The input meter reads the signal before any processing.
 2. Raise the receiver volume until CLIP turns red, then lower it until the audio sounds clean.
 3. Press **Stop** and **Start** to clear the indicator and confirm it stays grey. Aim for roughly -20 dBFS RMS with peaks between -12 and -6 dBFS.
-4. Recover the listening level with **Master Output**, which applies to both bypass and filtered audio.
+4. Recover the listening level with **Master Output**.
 
 A clean setting may require a very low receiver volume; this is expected with a microphone-level input. A fixed-level line, ACC, or DATA output on the receiver, or an attenuator before the interface, allows a higher receiver setting. Audio isolation transformers on the input and output lines prevent ground-loop hum but do not by themselves reduce the level enough for a microphone input.
 
@@ -110,7 +119,7 @@ Start audio processing before recording. Recordings are written as mono WAV and 
 
 - **No input signal:** Run `python list_devices.py`, check input permissions, and verify the radio's routing to the selected capture device.
 - **No output:** Check the selected output device and the system output level.
-- **Clipped input or distorted bypass audio:** Reduce the level before the computer's audio input; see [Input Level Calibration](#input-level-calibration). The DSP trim is downstream and cannot repair ADC clipping.
-- **Uneven level between bypass and filtering:** Adjust Master Output to a comfortable listening level; the filter path may have a different average level from bypass.
+- **Clipped or distorted input audio:** Reduce the level before the computer's audio input; see [Input Level Calibration](#input-level-calibration). The DSP trim is downstream and cannot repair ADC clipping.
+- **Uneven level between filters:** Each preset changes the level by 3-8 dB, and the band-pass alone keeps the full level. Adjust Master Output to a comfortable listening level.
 
 For attribution and dependency notices, see [THIRD_PARTY.md](../THIRD_PARTY.md).
