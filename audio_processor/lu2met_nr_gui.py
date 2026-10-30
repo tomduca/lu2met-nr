@@ -657,10 +657,6 @@ class LU2METNRWindow(QMainWindow):
         
         # With no filter checked, only the band-pass filter is applied.
         self.nr_check = QCheckBox('Spectral MMSE (Schmitt/Romanin)')
-        self.nr_check.setToolTip(
-            'Spectral noise reduction after Schmitt et al. (2002) and Romanin et al. (2009), '
-            'tuned by the presets below'
-        )
         self.nr_check.setChecked(True)
         self.nr_check.stateChanged.connect(self.on_filters_change)
         preset_layout.addWidget(self.nr_check)
@@ -687,11 +683,6 @@ class LU2METNRWindow(QMainWindow):
         preset_layout.addLayout(preset_row)
 
         self.nr2_check = QCheckBox('OM-LSA (Cohen)')
-        self.nr2_check.setToolTip(
-            'OM-LSA with IMCRA noise tracking, after I. Cohen (2001, 2003). No settings. '
-            'With both filters checked it runs after the first one. Adds about 32 ms of '
-            'delay and needs about 2.5 s to learn the noise.'
-        )
         self.nr2_check.stateChanged.connect(self.on_filters_change)
         preset_layout.addWidget(self.nr2_check)
         
@@ -821,26 +812,33 @@ class LU2METNRWindow(QMainWindow):
         rec_info.setStyleSheet('color: #6b7280; font-size: 11px;')
         rec_layout.addWidget(rec_info)
         
+        # Start, Stop and Open on one row. A disabled button turns light gray
+        # with readable text, so Start looks pressed while recording.
+        rec_button_style = (
+            'QPushButton {{ background: {}; color: white; padding: 6px 4px; '
+            'font-size: 11px; font-weight: bold; }} '
+            'QPushButton:disabled {{ background: #d1d5db; color: #6b7280; }}'
+        )
         rec_buttons_layout = QHBoxLayout()
         self.rec_start_btn = QPushButton('🔴 Start Recording')
         self.rec_start_btn.clicked.connect(self.start_recording)
         self.rec_start_btn.setEnabled(False)
-        self.rec_start_btn.setStyleSheet('background: #dc2626; color: white; padding: 6px; font-weight: bold;')
+        self.rec_start_btn.setStyleSheet(rec_button_style.format('#dc2626'))
         rec_buttons_layout.addWidget(self.rec_start_btn)
         
-        self.rec_stop_btn = QPushButton('⏹️ Stop Recording')
+        self.rec_stop_btn = QPushButton('■ Stop Recording')
         self.rec_stop_btn.clicked.connect(self.stop_recording)
         self.rec_stop_btn.setEnabled(False)
-        self.rec_stop_btn.setStyleSheet('background: #6b7280; color: white; padding: 6px; font-weight: bold;')
+        self.rec_stop_btn.setStyleSheet(rec_button_style.format('#dc2626'))
         rec_buttons_layout.addWidget(self.rec_stop_btn)
         
-        rec_layout.addLayout(rec_buttons_layout)
-        
-        # Open folder button
-        self.open_folder_btn = QPushButton('📁 Open Recordings Folder')
+        self.open_folder_btn = QPushButton('📁 Open Folder')
+        self.open_folder_btn.setToolTip('Open the recordings folder')
         self.open_folder_btn.clicked.connect(self.open_recordings_folder)
-        self.open_folder_btn.setStyleSheet('background: #3b82f6; color: white; padding: 6px; margin-top: 3px;')
-        rec_layout.addWidget(self.open_folder_btn)
+        self.open_folder_btn.setStyleSheet(rec_button_style.format('#3b82f6'))
+        rec_buttons_layout.addWidget(self.open_folder_btn)
+        
+        rec_layout.addLayout(rec_buttons_layout)
         
         rec_group.setLayout(rec_layout)
         layout.addWidget(rec_group)
@@ -1003,13 +1001,11 @@ class LU2METNRWindow(QMainWindow):
         self.processor.start_recording()
         self.rec_start_btn.setEnabled(False)
         self.rec_stop_btn.setEnabled(True)
-        self.rec_stop_btn.setStyleSheet('background: #dc2626; color: white; padding: 6px; font-weight: bold;')  # Red when active
     
     def stop_recording(self):
         self.processor.stop_recording()
         self.rec_start_btn.setEnabled(True)
         self.rec_stop_btn.setEnabled(False)
-        self.rec_stop_btn.setStyleSheet('background: #6b7280; color: white; padding: 6px; font-weight: bold;')  # Gray when disabled
     
     def open_recordings_folder(self):
         """Open the recordings folder in file explorer"""
